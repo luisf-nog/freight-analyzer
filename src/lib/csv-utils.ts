@@ -224,7 +224,27 @@ export async function readFileAsRows(file: File): Promise<string[][]> {
     const buffer = await file.arrayBuffer();
     return parseXLSXBuffer(buffer);
   }
-  const text = await file.text();
+
+  // CSV/TXT/TSV: some customers export as Windows-1252 / ISO-8859-1.
+  // If we decode as UTF-8, we can get FFD (replacement char) and lose letters (e.g. "SDO" -> "SO").
+  const buffer = await file.arrayBuffer();
+  const decode = (encoding: string): string | null => {
+    try {
+      return new TextDecoder(encoding, { fatal: false }).decode(buffer);
+    } catch {
+      return null;
+    }
+  };
+
+  let text = decode("utf-8") ?? "";
+
+  if (text.includes("\uFFFD")) {
+    text = decode("windows-1252") ?? decode("iso-8859-1") ?? text;
+  }
+
+  // Remove BOM if present
+  text = text.replace(/^\uFEFF/, "");
+
   return parseCSVText(text);
 }
 
