@@ -8,6 +8,8 @@ import { CarrierRateImport } from "@/components/imports/CarrierRateImport";
 import { ShipmentImport } from "@/components/imports/ShipmentImport";
 import { IcmsEditor } from "@/components/imports/IcmsEditor";
 import { MatchQuality } from "@/components/imports/MatchQuality";
+import { RunSimulation } from "@/components/simulation/RunSimulation";
+import { AnalysisDashboard } from "@/components/analysis/AnalysisDashboard";
 import { toast } from "@/hooks/use-toast";
 
 interface Study {
@@ -25,6 +27,7 @@ const StudyDetail = () => {
   const [loading, setLoading] = useState(true);
   const [rateCount, setRateCount] = useState(0);
   const [shipmentCount, setShipmentCount] = useState(0);
+  const [simulationCount, setSimulationCount] = useState(0);
 
   const fetchStudy = useCallback(async () => {
     if (!id) return;
@@ -32,7 +35,7 @@ const StudyDetail = () => {
       .from("studies")
       .select("id, name, carrier_name, status, notes")
       .eq("id", id)
-      .single();
+      .maybeSingle();
     if (error || !data) {
       toast({ title: "Estudo não encontrado", variant: "destructive" });
       navigate("/");
@@ -44,12 +47,14 @@ const StudyDetail = () => {
 
   const fetchCounts = useCallback(async () => {
     if (!id) return;
-    const [{ count: rc }, { count: sc }] = await Promise.all([
+    const [{ count: rc }, { count: sc }, { count: simc }] = await Promise.all([
       supabase.from("carrier_rates").select("id", { count: "exact", head: true }).eq("study_id", id),
       supabase.from("shipments_paid").select("id", { count: "exact", head: true }).eq("study_id", id),
+      supabase.from("simulations").select("id", { count: "exact", head: true }).eq("study_id", id),
     ]);
     setRateCount(rc ?? 0);
     setShipmentCount(sc ?? 0);
+    setSimulationCount(simc ?? 0);
   }, [id]);
 
   useEffect(() => {
@@ -89,8 +94,8 @@ const StudyDetail = () => {
           <TabsList>
             <TabsTrigger value="imports">Importações</TabsTrigger>
             <TabsTrigger value="match">Qualidade do Match</TabsTrigger>
-            <TabsTrigger value="simulation" disabled>Simulação</TabsTrigger>
-            <TabsTrigger value="analysis" disabled>Análise</TabsTrigger>
+            <TabsTrigger value="simulation">Simulação</TabsTrigger>
+            <TabsTrigger value="analysis">Análise</TabsTrigger>
           </TabsList>
 
           <TabsContent value="imports" className="space-y-4 pt-4">
@@ -106,11 +111,11 @@ const StudyDetail = () => {
           </TabsContent>
 
           <TabsContent value="simulation" className="pt-4">
-            <p className="text-muted-foreground">Fase 2 — Em breve</p>
+            <RunSimulation studyId={study.id} rateCount={rateCount} shipmentCount={shipmentCount} onComplete={fetchCounts} />
           </TabsContent>
 
           <TabsContent value="analysis" className="pt-4">
-            <p className="text-muted-foreground">Fase 3 — Em breve</p>
+            <AnalysisDashboard studyId={study.id} simulationCount={simulationCount} />
           </TabsContent>
         </Tabs>
       </main>
