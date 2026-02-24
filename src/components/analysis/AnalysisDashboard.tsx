@@ -391,6 +391,45 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     return { realizado: rCount > 0 ? rTotal / rCount : null, proposto: pCount > 0 ? pTotal / pCount : null };
   };
 
+  const getDeadlineCapInt = (uf: string, regiao: string) => {
+    // Filter deadlines for this UF, then check if city is capital or interior
+    const capital = STATE_CAPITALS[uf];
+    const isCapital = regiao === "Capital";
+    const filterFn = (d: { uf: string; cidade_corrigida: string }) =>
+      d.uf === uf && (isCapital ? d.cidade_corrigida === capital : d.cidade_corrigida !== capital);
+    const rRows = deadlinesRealized.filter(filterFn);
+    const pRows = deadlinesProposed.filter(filterFn);
+    const realizado = rRows.length > 0 ? rRows.reduce((s, d) => s + d.prazo_dias, 0) / rRows.length : null;
+    const proposto = pRows.length > 0 ? pRows.reduce((s, d) => s + d.prazo_dias, 0) / pRows.length : null;
+    return { realizado, proposto };
+  };
+
+  // Overall deadline stats
+  const deadlineStats = useMemo(() => {
+    if (!hasDeadlines) return null;
+    const rTotal = deadlinesRealized.reduce((s, d) => s + d.prazo_dias, 0);
+    const rCount = deadlinesRealized.length;
+    const pTotal = deadlinesProposed.reduce((s, d) => s + d.prazo_dias, 0);
+    const pCount = deadlinesProposed.length;
+    const avgReal = rCount > 0 ? rTotal / rCount : null;
+    const avgProp = pCount > 0 ? pTotal / pCount : null;
+    const cidadesReal = rCount;
+    const cidadesProp = pCount;
+    // Cities where proposal is faster
+    let faster = 0, slower = 0, equal = 0;
+    const realMap = new Map<string, number>();
+    for (const d of deadlinesRealized) realMap.set(`${d.uf}|${d.cidade_corrigida}`, d.prazo_dias);
+    for (const d of deadlinesProposed) {
+      const r = realMap.get(`${d.uf}|${d.cidade_corrigida}`);
+      if (r !== undefined) {
+        if (d.prazo_dias < r) faster++;
+        else if (d.prazo_dias > r) slower++;
+        else equal++;
+      }
+    }
+    return { avgReal, avgProp, cidadesReal, cidadesProp, faster, slower, equal };
+  }, [deadlinesRealized, deadlinesProposed, hasDeadlines]);
+
 
   const exportCSV = () => {
     const lines = ["UF;Região Macro;Capital/Interior;Qtd NF;Valor Cobrado;Valor Proposta;Diferença;% Dif;R$/kg Hoje;R$/kg Proposta;Peso Médio;Win Rate"];
@@ -480,7 +519,68 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
         </div>
       </div>
 
-      {/* BLOCO 2 — Confiabilidade */}
+      {/* BLOCO Prazo */}
+      {deadlineStats && (
+        <div>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            <Clock className="h-4 w-4" /> Comparativo de Prazos
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center p-4">
+                <p className="text-xs text-muted-foreground">Prazo Médio Hoje</p>
+                <p className="mt-1 text-lg font-bold">{deadlineStats.avgReal !== null ? deadlineStats.avgReal.toFixed(1) + " dias" : "—"}</p>
+                <p className="text-[10px] text-muted-foreground">{deadlineStats.cidadesReal} cidades</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center p-4">
+                <p className="text-xs text-muted-foreground">Prazo Médio Proposta</p>
+                <p className="mt-1 text-lg font-bold">{deadlineStats.avgProp !== null ? deadlineStats.avgProp.toFixed(1) + " dias" : "—"}</p>
+                <p className="text-[10px] text-muted-foreground">{deadlineStats.cidadesProp} cidades</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center p-4">
+                <p className="text-xs text-muted-foreground">Diferença Média</p>
+                {deadlineStats.avgReal !== null && deadlineStats.avgProp !== null ? (() => {
+                  const d = deadlineStats.avgReal - deadlineStats.avgProp;
+                  return (
+                    <>
+                      <p className={`mt-1 text-lg font-bold ${d > 0 ? "text-emerald-600" : d < 0 ? "text-destructive" : ""}`}>
+                        {d > 0 ? "-" : "+"}{Math.abs(d).toFixed(1)} dias
+                      </p>
+                      <p className={`text-[10px] ${d > 0 ? "text-emerald-600" : d < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                        {d > 0 ? "Proposta mais rápida" : d < 0 ? "Proposta mais lenta" : "Mesmo prazo"}
+                      </p>
+                    </>
+                  );
+                })() : <p className="mt-1 text-lg font-bold">—</p>}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center p-4">
+                <p className="text-xs text-muted-foreground">Cidades Comparadas</p>
+                <div className="mt-1 flex items-baseline gap-3 text-sm">
+                  <div className="text-center">
+                    <p className="text-[10px] text-emerald-600">Mais rápido</p>
+                    <p className="font-bold text-emerald-600">{deadlineStats.faster}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] text-muted-foreground">Igual</p>
+                    <p className="font-bold">{deadlineStats.equal}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] text-destructive">Mais lento</p>
+                    <p className="font-bold text-destructive">{deadlineStats.slower}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
       <div>
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           <ShieldAlert className="h-4 w-4" /> Confiabilidade do Estudo
@@ -598,6 +698,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                               const srkgP = s.peso > 0 ? s.proposto / s.peso : 0;
                               const spm = s.qtd > 0 ? s.peso / s.qtd : 0;
                               const swr = s.qtd > 0 ? (s.wins / s.qtd) * 100 : 0;
+                              const sdl = hasDeadlines ? getDeadlineCapInt(uf.uf, s.regiao) : null;
                               return (
                                 <TableRow key={`${uf.uf}-${s.regiao}`} className="bg-muted/20 text-xs">
                                   <TableCell />
@@ -612,8 +713,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                                   <TableCell className="text-right">R$ {srkgP.toFixed(2)}</TableCell>
                                   <TableCell className="text-right">{formatNumber(spm, 1)}</TableCell>
                                   <TableCell className="text-right">{swr.toFixed(0)}%</TableCell>
-                                  {hasDeadlines && <TableCell />}
-                                  {hasDeadlines && <TableCell />}
+                                  {sdl && <TableCell className="text-right">{sdl.realizado !== null ? sdl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
+                                  {sdl && <TableCell className={`text-right ${sdl.realizado !== null && sdl.proposto !== null ? (sdl.proposto < sdl.realizado ? "text-emerald-600" : sdl.proposto > sdl.realizado ? "text-destructive" : "") : ""}`}>{sdl.proposto !== null ? sdl.proposto.toFixed(1) + "d" : "—"}</TableCell>}
                                 </TableRow>
                               );
                             })}
@@ -623,8 +724,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                       {/* Total */}
                       <TableRow className="border-t-2 bg-muted/30 font-bold">
                         <TableCell />
-                        {hasDeadlines && <TableCell />}
-                        {hasDeadlines && <TableCell />}
                         <TableCell>TOTAL</TableCell>
                         <TableCell />
                         <TableCell className="text-right">{stats.qtdNF.toLocaleString("pt-BR")}</TableCell>
@@ -636,6 +735,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                         <TableCell className="text-right">R$ {stats.rkgProposta.toFixed(2)}</TableCell>
                         <TableCell className="text-right">{formatNumber(stats.qtdNF > 0 ? stats.totalPeso / stats.qtdNF : 0, 1)}</TableCell>
                         <TableCell />
+                        {hasDeadlines && <TableCell className="text-right">{deadlineStats?.avgReal !== null ? deadlineStats?.avgReal?.toFixed(1) + "d" : "—"}</TableCell>}
+                        {hasDeadlines && <TableCell className="text-right">{deadlineStats?.avgProp !== null ? deadlineStats?.avgProp?.toFixed(1) + "d" : "—"}</TableCell>}
                       </TableRow>
                     </TableBody>
                   </Table>
