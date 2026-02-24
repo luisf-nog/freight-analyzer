@@ -352,29 +352,44 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     }).filter(b => b.qtd > 0);
   }, [filtered]);
 
-  // Deadline pivot: cross-reference realized vs proposed
-  const deadlinePivot = useMemo(() => {
-    if (deadlinesRealized.length === 0 && deadlinesProposed.length === 0) return [];
-    const realizedMap = new Map<string, number>();
-    for (const d of deadlinesRealized) realizedMap.set(`${d.uf}|${d.cidade_corrigida}`, d.prazo_dias);
-    const proposedMap = new Map<string, number>();
-    for (const d of deadlinesProposed) proposedMap.set(`${d.uf}|${d.cidade_corrigida}`, d.prazo_dias);
-
-    const allKeys = new Set([...realizedMap.keys(), ...proposedMap.keys()]);
-    const result: Array<{ uf: string; cidade: string; realizado: number | null; proposto: number | null; dif: number | null }> = [];
-    for (const key of allKeys) {
-      const [uf, cidade] = key.split("|");
-      const realizado = realizedMap.get(key) ?? null;
-      const proposto = proposedMap.get(key) ?? null;
-      const dif = realizado !== null && proposto !== null ? realizado - proposto : null;
-      result.push({ uf, cidade, realizado, proposto, dif });
+  // Deadline averages by UF
+  const deadlineByUF = useMemo(() => {
+    const realizedByUF = new Map<string, { total: number; count: number }>();
+    for (const d of deadlinesRealized) {
+      const agg = realizedByUF.get(d.uf) ?? { total: 0, count: 0 };
+      agg.total += d.prazo_dias; agg.count++;
+      realizedByUF.set(d.uf, agg);
     }
-    result.sort((a, b) => {
-      if (a.uf !== b.uf) return a.uf.localeCompare(b.uf);
-      return a.cidade.localeCompare(b.cidade);
-    });
-    return result;
+    const proposedByUF = new Map<string, { total: number; count: number }>();
+    for (const d of deadlinesProposed) {
+      const agg = proposedByUF.get(d.uf) ?? { total: 0, count: 0 };
+      agg.total += d.prazo_dias; agg.count++;
+      proposedByUF.set(d.uf, agg);
+    }
+    return { realizedByUF, proposedByUF };
   }, [deadlinesRealized, deadlinesProposed]);
+
+  const hasDeadlines = deadlinesRealized.length > 0 || deadlinesProposed.length > 0;
+
+  const getDeadlineUF = (uf: string) => {
+    const r = deadlineByUF.realizedByUF.get(uf);
+    const p = deadlineByUF.proposedByUF.get(uf);
+    const realizado = r ? r.total / r.count : null;
+    const proposto = p ? p.total / p.count : null;
+    return { realizado, proposto };
+  };
+
+  const getDeadlineMacro = (regiao: string) => {
+    const ufsInRegiao = Object.entries(UF_MACRO).filter(([, m]) => m === regiao).map(([uf]) => uf);
+    let rTotal = 0, rCount = 0, pTotal = 0, pCount = 0;
+    for (const uf of ufsInRegiao) {
+      const r = deadlineByUF.realizedByUF.get(uf);
+      if (r) { rTotal += r.total; rCount += r.count; }
+      const p = deadlineByUF.proposedByUF.get(uf);
+      if (p) { pTotal += p.total; pCount += p.count; }
+    }
+    return { realizado: rCount > 0 ? rTotal / rCount : null, proposto: pCount > 0 ? pTotal / pCount : null };
+  };
 
 
   const exportCSV = () => {
@@ -544,6 +559,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                         <TableHead className="text-right">R$/kg Prop.</TableHead>
                         <TableHead className="text-right">Peso Médio</TableHead>
                         <TableHead className="text-right">Win Rate</TableHead>
+                        {hasDeadlines && <TableHead className="text-right">Prazo Real.</TableHead>}
+                        {hasDeadlines && <TableHead className="text-right">Prazo Prop.</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -553,6 +570,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                         const rkgP = uf.peso > 0 ? uf.proposto / uf.peso : 0;
                         const pm = uf.qtd > 0 ? uf.peso / uf.qtd : 0;
                         const wr = uf.qtd > 0 ? (uf.wins / uf.qtd) * 100 : 0;
+                        const dl = hasDeadlines ? getDeadlineUF(uf.uf) : null;
                         const expanded = expandedUFs.has(uf.uf);
                         const subRows = expanded ? getUFSubRows(uf.uf) : [];
 
@@ -571,6 +589,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                               <TableCell className="text-right">R$ {rkgP.toFixed(2)}</TableCell>
                               <TableCell className="text-right">{formatNumber(pm, 1)}</TableCell>
                               <TableCell className="text-right"><Badge variant={wr >= 60 ? "default" : "secondary"} className="text-[10px]">{wr.toFixed(0)}%</Badge></TableCell>
+                              {dl && <TableCell className="text-right">{dl.realizado !== null ? dl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
+                              {dl && <TableCell className={`text-right ${dl.realizado !== null && dl.proposto !== null ? (dl.proposto < dl.realizado ? "text-emerald-600" : dl.proposto > dl.realizado ? "text-destructive" : "") : ""}`}>{dl.proposto !== null ? dl.proposto.toFixed(1) + "d" : "—"}</TableCell>}
                             </TableRow>
                             {subRows.map(s => {
                               const sp = s.proposto > 0 ? (s.dif / s.proposto) * 100 : 0;
@@ -592,6 +612,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                                   <TableCell className="text-right">R$ {srkgP.toFixed(2)}</TableCell>
                                   <TableCell className="text-right">{formatNumber(spm, 1)}</TableCell>
                                   <TableCell className="text-right">{swr.toFixed(0)}%</TableCell>
+                                  {hasDeadlines && <TableCell />}
+                                  {hasDeadlines && <TableCell />}
                                 </TableRow>
                               );
                             })}
@@ -601,6 +623,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                       {/* Total */}
                       <TableRow className="border-t-2 bg-muted/30 font-bold">
                         <TableCell />
+                        {hasDeadlines && <TableCell />}
+                        {hasDeadlines && <TableCell />}
                         <TableCell>TOTAL</TableCell>
                         <TableCell />
                         <TableCell className="text-right">{stats.qtdNF.toLocaleString("pt-BR")}</TableCell>
@@ -635,11 +659,14 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                       <TableHead className="text-right">R$/kg Hoje</TableHead>
                       <TableHead className="text-right">R$/kg Prop.</TableHead>
                       <TableHead className="text-right">Peso Médio</TableHead>
+                      {hasDeadlines && <TableHead className="text-right">Prazo Real.</TableHead>}
+                      {hasDeadlines && <TableHead className="text-right">Prazo Prop.</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {macroPivot.map(m => {
                       const pct = m.proposto > 0 ? (m.dif / m.proposto) * 100 : 0;
+                      const dl = hasDeadlines ? getDeadlineMacro(m.regiao) : null;
                       return (
                         <TableRow key={m.regiao}>
                           <TableCell className="font-semibold">{m.regiao}</TableCell>
@@ -651,6 +678,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                           <TableCell className="text-right">R$ {(m.peso > 0 ? m.cobrado / m.peso : 0).toFixed(2)}</TableCell>
                           <TableCell className="text-right">R$ {(m.peso > 0 ? m.proposto / m.peso : 0).toFixed(2)}</TableCell>
                           <TableCell className="text-right">{formatNumber(m.qtd > 0 ? m.peso / m.qtd : 0, 1)}</TableCell>
+                          {dl && <TableCell className="text-right">{dl.realizado !== null ? dl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
+                          {dl && <TableCell className={`text-right ${dl.realizado !== null && dl.proposto !== null ? (dl.proposto < dl.realizado ? "text-emerald-600" : dl.proposto > dl.realizado ? "text-destructive" : "") : ""}`}>{dl.proposto !== null ? dl.proposto.toFixed(1) + "d" : "—"}</TableCell>}
                         </TableRow>
                       );
                     })}
@@ -710,59 +739,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
         </Tabs>
       </div>
 
-      {/* BLOCO Prazos */}
-      {deadlinePivot.length > 0 && (
-        <div>
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            <Clock className="h-4 w-4" /> Comparativo de Prazos
-          </h2>
-          <Card>
-            <CardContent className="p-0">
-              <div className="overflow-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>UF</TableHead>
-                      <TableHead>Cidade</TableHead>
-                      <TableHead className="text-right">Realizado (dias)</TableHead>
-                      <TableHead className="text-right">Proposto (dias)</TableHead>
-                      <TableHead className="text-right">Diferença</TableHead>
-                      <TableHead className="text-right">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {deadlinePivot.map((d, i) => {
-                      const difColor2 = d.dif !== null ? (d.dif > 0 ? "text-destructive" : d.dif < 0 ? "text-emerald-600" : "text-muted-foreground") : "text-muted-foreground";
-                      return (
-                        <TableRow key={i}>
-                          <TableCell className="font-semibold">{d.uf}</TableCell>
-                          <TableCell>{d.cidade}</TableCell>
-                          <TableCell className="text-right">{d.realizado !== null ? d.realizado.toFixed(1) : "—"}</TableCell>
-                          <TableCell className="text-right">{d.proposto !== null ? d.proposto.toFixed(1) : "—"}</TableCell>
-                          <TableCell className={`text-right font-bold ${difColor2}`}>
-                            {d.dif !== null ? `${d.dif > 0 ? "+" : ""}${d.dif.toFixed(1)}` : "—"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {d.dif === null ? (
-                              <Badge variant="secondary" className="text-[10px]">Sem dados</Badge>
-                            ) : d.dif < 0 ? (
-                              <Badge className="text-[10px] bg-emerald-600">Mais rápido</Badge>
-                            ) : d.dif > 0 ? (
-                              <Badge variant="destructive" className="text-[10px]">Mais lento</Badge>
-                            ) : (
-                              <Badge variant="secondary" className="text-[10px]">Igual</Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+
       <div>
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           <Search className="h-4 w-4" /> Onde Ganha e Onde Dói
