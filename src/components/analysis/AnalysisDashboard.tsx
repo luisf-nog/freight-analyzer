@@ -102,12 +102,12 @@ function getMacro(uf: string) {
   return UF_MACRO[uf] ?? "Outro";
 }
 
-async function fetchAll(table: "simulations" | "shipments_paid", select: string, filters: Record<string, string>) {
+async function fetchAll(table: string, select: string, filters: Record<string, string>) {
   const all: any[] = [];
   let offset = 0;
   const batchSize = 1000;
   while (true) {
-    let q = supabase.from(table).select(select).range(offset, offset + batchSize - 1) as any;
+    let q = (supabase.from(table as any) as any).select(select).range(offset, offset + batchSize - 1);
     for (const [k, v] of Object.entries(filters)) q = q.eq(k, v);
     const { data, error } = await q;
     if (error) throw error;
@@ -145,8 +145,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
         fetchAll("shipments_paid",
           "id, uf, cidade_corrigida, peso, valor_nf, data",
           { study_id: studyId }),
-        supabase.from("deadlines_realized").select("uf, cidade_corrigida, prazo_dias").eq("study_id", studyId).then(r => r.data ?? []),
-        supabase.from("deadlines_proposed").select("uf, cidade_corrigida, prazo_dias").eq("study_id", studyId).then(r => r.data ?? []),
+        fetchAll("deadlines_realized", "uf, cidade_corrigida, prazo_dias", { study_id: studyId }),
+        fetchAll("deadlines_proposed", "uf, cidade_corrigida, prazo_dias", { study_id: studyId }),
       ]);
       const shipMap = new Map<string, { uf: string; cidade: string; peso: number; valor_nf: number; data: string | null }>();
       for (const s of shipments) shipMap.set(s.id, { uf: s.uf, cidade: s.cidade_corrigida, peso: s.peso, valor_nf: s.valor_nf, data: s.data });
