@@ -332,6 +332,20 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     return Array.from(map.values()).sort((a, b) => b.dif - a.dif);
   }, [filtered]);
 
+  // Weight band pivot
+  const weightPivot = useMemo(() => {
+    return WEIGHT_BANDS.map(band => {
+      const bandRows = filtered.filter(r => r.shipment_peso > band.min && r.shipment_peso <= band.max);
+      const qtd = bandRows.length;
+      const cobrado = bandRows.reduce((s, r) => s + (r.valor_cobrado ?? 0), 0);
+      const proposto = bandRows.reduce((s, r) => s + (r.frete_final ?? 0), 0);
+      const dif = cobrado - proposto;
+      const peso = bandRows.reduce((s, r) => s + r.shipment_peso, 0);
+      const wins = bandRows.filter(r => (r.valor_cobrado ?? 0) > (r.frete_final ?? 0)).length;
+      return { label: band.label, qtd, cobrado, proposto, dif, peso, wins };
+    }).filter(b => b.qtd > 0);
+  }, [filtered]);
+
   const exportCSV = () => {
     const lines = ["UF;Região Macro;Capital/Interior;Qtd NF;Valor Cobrado;Valor Proposta;Diferença;% Dif;R$/kg Hoje;R$/kg Proposta;Peso Médio;Win Rate"];
     for (const uf of ufPivot) {
@@ -477,6 +491,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
           <TabsList className="mb-3">
             <TabsTrigger value="uf">Por UF</TabsTrigger>
             <TabsTrigger value="macro">Por Macro Região</TabsTrigger>
+            <TabsTrigger value="peso">Por Faixa de Peso</TabsTrigger>
           </TabsList>
 
           <TabsContent value="uf">
@@ -610,6 +625,54 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                     })}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="peso">
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Faixa de Peso</TableHead>
+                        <TableHead className="text-right">Qtd NF</TableHead>
+                        <TableHead className="text-right">Pago</TableHead>
+                        <TableHead className="text-right">Proposta</TableHead>
+                        <TableHead className="text-right">Diferença</TableHead>
+                        <TableHead className="text-right">% Dif</TableHead>
+                        <TableHead className="text-right">R$/kg Hoje</TableHead>
+                        <TableHead className="text-right">R$/kg Prop.</TableHead>
+                        <TableHead className="text-right">Peso Médio</TableHead>
+                        <TableHead className="text-right">Win Rate</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {weightPivot.map(b => {
+                        const pct = b.proposto > 0 ? (b.dif / b.proposto) * 100 : 0;
+                        const rkgH = b.peso > 0 ? b.cobrado / b.peso : 0;
+                        const rkgP = b.peso > 0 ? b.proposto / b.peso : 0;
+                        const pm = b.qtd > 0 ? b.peso / b.qtd : 0;
+                        const wr = b.qtd > 0 ? (b.wins / b.qtd) * 100 : 0;
+                        return (
+                          <TableRow key={b.label}>
+                            <TableCell className="font-semibold">{b.label}</TableCell>
+                            <TableCell className="text-right">{b.qtd.toLocaleString("pt-BR")}</TableCell>
+                            <TableCell className="text-right">{formatBRL(b.cobrado)}</TableCell>
+                            <TableCell className="text-right">{formatBRL(b.proposto)}</TableCell>
+                            <TableCell className={`text-right font-bold ${difColor(b.dif)}`}>{formatBRL(b.dif)}</TableCell>
+                            <TableCell className={`text-right ${difColor(b.dif)}`}>{pct >= 0 ? "+" : ""}{pct.toFixed(1)}%</TableCell>
+                            <TableCell className="text-right">R$ {rkgH.toFixed(2)}</TableCell>
+                            <TableCell className="text-right">R$ {rkgP.toFixed(2)}</TableCell>
+                            <TableCell className="text-right">{formatNumber(pm, 1)}</TableCell>
+                            <TableCell className="text-right"><Badge variant={wr >= 60 ? "default" : "secondary"} className="text-[10px]">{wr.toFixed(0)}%</Badge></TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
