@@ -6,6 +6,34 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatBRL } from "@/lib/csv-utils";
 import { CheckCircle2, XCircle, AlertTriangle, Download } from "lucide-react";
 
+/** Fetch all rows from a table with pagination (bypasses 1000-row limit) */
+async function fetchAll(
+  table: "shipments_paid" | "carrier_rates" | "icms_uf",
+  select: string,
+  filters: Record<string, string>,
+  batchSize = 1000
+): Promise<Record<string, unknown>[]> {
+  const all: Record<string, unknown>[] = [];
+  let offset = 0;
+  let hasMore = true;
+  while (hasMore) {
+    let query = (supabase.from(table) as any).select(select).range(offset, offset + batchSize - 1);
+    for (const [k, v] of Object.entries(filters)) {
+      query = query.eq(k, v);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    if (data && (data as unknown[]).length > 0) {
+      all.push(...(data as Record<string, unknown>[]));
+      offset += batchSize;
+      hasMore = (data as unknown[]).length === batchSize;
+    } else {
+      hasMore = false;
+    }
+  }
+  return all;
+}
+
 interface Props {
   studyId: string;
   rateCount: number;
@@ -34,35 +62,39 @@ export function MatchQuality({ studyId, rateCount, shipmentCount }: Props) {
     const analyze = async () => {
       setLoading(true);
 
-      // Get all shipment cities
-      const { data: shipments } = await supabase
-        .from("shipments_paid")
-        .select("cidade_corrigida, uf, valor_cobrado")
-        .eq("study_id", studyId);
+      // Get all shipment cities (paginated)
+      const shipments = await fetchAll(
+        "shipments_paid",
+        "cidade_corrigida, uf, valor_cobrado",
+        { study_id: studyId }
+      );
 
-      // Get all rate cities
-      const { data: rates } = await supabase
-        .from("carrier_rates")
-        .select("cidade_corrigida, uf")
-        .eq("study_id", studyId);
+      // Get all rate cities (paginated)
+      const rates = await fetchAll(
+        "carrier_rates",
+        "cidade_corrigida, uf",
+        { study_id: studyId }
+      );
 
       // Get ICMS UFs
-      const { data: icmsData } = await supabase.from("icms_uf").select("uf");
+      const icmsData = await fetchAll("icms_uf", "uf", {});
 
-      if (!shipments || !rates) { setLoading(false); return; }
+      if (!shipments.length || !rates.length) { setLoading(false); return; }
 
       const rateSet = new Set(rates.map(r => `${r.uf}|${r.cidade_corrigida}`));
-      const icmsSet = new Set((icmsData ?? []).map(r => r.uf));
+      const icmsSet = new Set(icmsData.map(r => String(r.uf)));
 
       let matchCount = 0;
       let missingIcmsCount = 0;
       const notFoundMap = new Map<string, NotFoundCity>();
 
       for (const s of shipments) {
-        const key = `${s.uf}|${s.cidade_corrigida}`;
+        const uf = String(s.uf ?? "");
+        const cidade = String(s.cidade_corrigida ?? "");
+        const key = `${uf}|${cidade}`;
         if (rateSet.has(key)) {
           matchCount++;
-          if (!icmsSet.has(s.uf)) missingIcmsCount++;
+          if (!icmsSet.has(uf)) missingIcmsCount++;
         } else {
           const existing = notFoundMap.get(key);
           if (existing) {
@@ -70,8 +102,8 @@ export function MatchQuality({ studyId, rateCount, shipmentCount }: Props) {
             existing.total_cobrado += Number(s.valor_cobrado) || 0;
           } else {
             notFoundMap.set(key, {
-              cidade_corrigida: s.cidade_corrigida,
-              uf: s.uf,
+              cidade_corrigida: cidade,
+              uf: uf,
               count: 1,
               total_cobrado: Number(s.valor_cobrado) || 0,
             });
