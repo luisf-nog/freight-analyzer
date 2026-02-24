@@ -113,7 +113,17 @@ export function CarrierRateImport({ studyId, rateCount, onImported }: Props) {
             <div className="rounded-md border p-3 text-sm">
               <p>Total de linhas: <strong>{result.totalRows}</strong></p>
               <p>Válidas para importar: <strong>{result.data.length}</strong></p>
-              {result.duplicates > 0 && <p>Duplicatas removidas: <strong>{result.duplicates}</strong></p>}
+              {result.duplicates > 0 && (
+                <details>
+                  <summary className="cursor-pointer text-warning">Duplicatas removidas (UF|Cidade): <strong>{result.duplicates}</strong></summary>
+                  <div className="max-h-40 overflow-auto text-xs mt-1">
+                    {result.duplicateDetails.slice(0, 50).map((d, i) => (
+                      <p key={i}>Linha {d.row}: "{d.key}" (primeira: linha {d.firstRow})</p>
+                    ))}
+                    {result.duplicateDetails.length > 50 && <p>...e mais {result.duplicateDetails.length - 50}</p>}
+                  </div>
+                </details>
+              )}
               {result.errors.length > 0 && <p className="text-destructive">Erros de parsing: <strong>{result.errors.length}</strong></p>}
             </div>
 

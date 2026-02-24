@@ -132,11 +132,18 @@ export interface ParseError {
   message: string;
 }
 
+export interface DuplicateInfo {
+  row: number;
+  key: string;
+  firstRow: number;
+}
+
 export interface ParseResult<T> {
   data: T[];
   errors: ParseError[];
   totalRows: number;
   duplicates: number;
+  duplicateDetails: DuplicateInfo[];
   missingColumns: string[];
 }
 
@@ -209,7 +216,7 @@ export async function readFileAsRows(file: File): Promise<string[][]> {
 /** Parse carrier rate CSV/XLSX — accepts text (CSV) or pre-parsed rows */
 export function parseCarrierRateCSV(input: string | string[][]): ParseResult<Record<string, unknown>> {
   const rows = typeof input === "string" ? parseCSVText(input) : input;
-  if (rows.length < 2) return { data: [], errors: [], totalRows: 0, duplicates: 0, missingColumns: [] };
+  if (rows.length < 2) return { data: [], errors: [], totalRows: 0, duplicates: 0, duplicateDetails: [], missingColumns: [] };
 
   const headers = rows[0].map(h => normalizeHeader(h));
 
@@ -230,8 +237,9 @@ export function parseCarrierRateCSV(input: string | string[][]): ParseResult<Rec
 
   const errors: ParseError[] = [];
   const data: Record<string, unknown>[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   let duplicates = 0;
+  const duplicateDetails: DuplicateInfo[] = [];
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
@@ -263,21 +271,23 @@ export function parseCarrierRateCSV(input: string | string[][]): ParseResult<Rec
     }
 
     const key = `${record.uf}|${record.cidade_corrigida}`;
-    if (seen.has(key)) {
+    const prevRow = seen.get(key);
+    if (prevRow !== undefined) {
       duplicates++;
+      duplicateDetails.push({ row: r + 1, key, firstRow: prevRow });
       continue;
     }
-    seen.add(key);
+    seen.set(key, r + 1);
     data.push(record);
   }
 
-  return { data, errors, totalRows: rows.length - 1, duplicates, missingColumns };
+  return { data, errors, totalRows: rows.length - 1, duplicates, duplicateDetails, missingColumns };
 }
 
 /** Parse shipments CSV/XLSX — accepts text (CSV) or pre-parsed rows */
 export function parseShipmentCSV(input: string | string[][]): ParseResult<Record<string, unknown>> {
   const rows = typeof input === "string" ? parseCSVText(input) : input;
-  if (rows.length < 2) return { data: [], errors: [], totalRows: 0, duplicates: 0, missingColumns: [] };
+  if (rows.length < 2) return { data: [], errors: [], totalRows: 0, duplicates: 0, duplicateDetails: [], missingColumns: [] };
 
   const headers = rows[0].map(h => normalizeHeader(h));
 
@@ -337,7 +347,7 @@ export function parseShipmentCSV(input: string | string[][]): ParseResult<Record
     data.push(record);
   }
 
-  return { data, errors, totalRows: rows.length - 1, duplicates: 0, missingColumns };
+  return { data, errors, totalRows: rows.length - 1, duplicates: 0, duplicateDetails: [], missingColumns };
 }
 
 /** Format number as BRL currency */
