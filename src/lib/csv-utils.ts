@@ -8,9 +8,14 @@ export function removeAccents(str: string): string {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-/** Normalize city name: trim, uppercase, remove accents */
+/** Normalize city name: trim, uppercase, remove accents, strip non-alpha chars */
 export function normalizeCity(city: string): string {
-  return removeAccents(city.trim().toUpperCase());
+  let s = removeAccents(city.trim().toUpperCase());
+  // Remove any remaining non-ASCII (handles mojibake/corrupted accents)
+  s = s.replace(/[^A-Z0-9 \-']/g, "");
+  // Collapse multiple spaces
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
 }
 
 /** Normalize UF: trim, uppercase */
