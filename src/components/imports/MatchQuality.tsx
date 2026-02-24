@@ -82,13 +82,17 @@ export function MatchQuality({ studyId, rateCount, shipmentCount }: Props) {
       if (!shipments.length || !rates.length) { setLoading(false); return; }
 
       const rateSet = new Set(rates.map(r => `${r.uf}|${r.cidade_corrigida}`));
+      const rateUFs = new Set(rates.map(r => String(r.uf)));
       const icmsSet = new Set(icmsData.map(r => String(r.uf)));
+
+      // Filter shipments to only UFs covered by the carrier rate table
+      const relevantShipments = shipments.filter(s => rateUFs.has(String(s.uf ?? "")));
 
       let matchCount = 0;
       let missingIcmsCount = 0;
       const notFoundMap = new Map<string, NotFoundCity>();
 
-      for (const s of shipments) {
+      for (const s of relevantShipments) {
         const uf = String(s.uf ?? "");
         const cidade = String(s.cidade_corrigida ?? "");
         const key = `${uf}|${cidade}`;
@@ -151,7 +155,7 @@ export function MatchQuality({ studyId, rateCount, shipmentCount }: Props) {
     return <Card><CardContent className="py-8 text-center text-muted-foreground">Analisando...</CardContent></Card>;
   }
 
-  const total = shipmentCount;
+  const total = matched + notFound.reduce((acc, nf) => acc + nf.count, 0);
   const notFoundTotal = notFound.reduce((acc, nf) => acc + nf.count, 0);
 
   return (
