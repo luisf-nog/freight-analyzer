@@ -377,6 +377,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   }, [deadlinesRealized, deadlinesProposed]);
 
 
+  const exportCSV = () => {
     const lines = ["UF;Região Macro;Capital/Interior;Qtd NF;Valor Cobrado;Valor Proposta;Diferença;% Dif;R$/kg Hoje;R$/kg Proposta;Peso Médio;Win Rate"];
     for (const uf of ufPivot) {
       const sub = getUFSubRows(uf.uf);
