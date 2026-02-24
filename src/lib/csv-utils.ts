@@ -1,6 +1,7 @@
 /**
- * CSV parsing and Brazilian data normalization utilities for FreteLab
+ * CSV/XLSX parsing and Brazilian data normalization utilities for FreteLab
  */
+import * as XLSX from "xlsx";
 
 /** Remove accents from string */
 export function removeAccents(str: string): string {
@@ -115,6 +116,7 @@ const SHIPMENT_COLUMN_MAP: Record<string, string> = {
   city: "cidade_corrigida",
   states: "uf",
   cte_data_lancamento: "data",
+  doctotacte: "valor_cobrado",
   doctotalcte: "valor_cobrado",
 };
 
@@ -135,7 +137,7 @@ export interface ParseResult<T> {
   missingColumns: string[];
 }
 
-/** Parse CSV text into array of string arrays */
+/** Parse a file (CSV or XLSX) into array of string arrays */
 export function parseCSVText(text: string, delimiter?: string): string[][] {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   if (lines.length === 0) return [];
@@ -182,9 +184,28 @@ export function parseCSVText(text: string, delimiter?: string): string[][] {
   });
 }
 
-/** Parse carrier rate CSV */
-export function parseCarrierRateCSV(text: string): ParseResult<Record<string, unknown>> {
-  const rows = parseCSVText(text);
+/** Parse XLSX file buffer into array of string arrays */
+export function parseXLSXBuffer(buffer: ArrayBuffer): string[][] {
+  const wb = XLSX.read(buffer, { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const data: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+  return data.map(row => row.map(cell => String(cell ?? "")));
+}
+
+/** Read a file as either CSV text or XLSX buffer, returning string[][] rows */
+export async function readFileAsRows(file: File): Promise<string[][]> {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+    const buffer = await file.arrayBuffer();
+    return parseXLSXBuffer(buffer);
+  }
+  const text = await file.text();
+  return parseCSVText(text);
+}
+
+/** Parse carrier rate CSV/XLSX — accepts text (CSV) or pre-parsed rows */
+export function parseCarrierRateCSV(input: string | string[][]): ParseResult<Record<string, unknown>> {
+  const rows = typeof input === "string" ? parseCSVText(input) : input;
   if (rows.length < 2) return { data: [], errors: [], totalRows: 0, duplicates: 0, missingColumns: [] };
 
   const headers = rows[0].map(h => normalizeHeader(h));
@@ -250,9 +271,9 @@ export function parseCarrierRateCSV(text: string): ParseResult<Record<string, un
   return { data, errors, totalRows: rows.length - 1, duplicates, missingColumns };
 }
 
-/** Parse shipments CSV */
-export function parseShipmentCSV(text: string): ParseResult<Record<string, unknown>> {
-  const rows = parseCSVText(text);
+/** Parse shipments CSV/XLSX — accepts text (CSV) or pre-parsed rows */
+export function parseShipmentCSV(input: string | string[][]): ParseResult<Record<string, unknown>> {
+  const rows = typeof input === "string" ? parseCSVText(input) : input;
   if (rows.length < 2) return { data: [], errors: [], totalRows: 0, duplicates: 0, missingColumns: [] };
 
   const headers = rows[0].map(h => normalizeHeader(h));
