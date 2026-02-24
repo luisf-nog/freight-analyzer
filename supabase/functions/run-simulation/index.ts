@@ -63,24 +63,23 @@ function getFreteBasePeso(rate: CarrierRate, peso: number): number {
 
   const exRate = rate.frete_kg_ex_200 ?? 0;
 
-  // Determine the highest available band and apply excess from there
-  if (rate.faixa_200 != null && peso <= 200) return rate.faixa_200;
-  if (rate.faixa_150 != null && peso <= 150) return rate.faixa_150;
+  // Check bands in ascending order (like Excel MATCH with match_type=1)
   if (rate.faixa_100 != null && peso <= 100) return rate.faixa_100;
+  if (rate.faixa_150 != null && peso <= 150) return rate.faixa_150;
+  if (rate.faixa_200 != null && peso <= 200) return rate.faixa_200;
 
   // Excess weight: start from highest available band
   if (rate.faixa_200 != null) {
-    return rate.faixa_200 + Math.max(0, peso - 200) * exRate;
+    return rate.faixa_200 + (peso - 200) * exRate;
   }
   if (rate.faixa_150 != null) {
-    return rate.faixa_150 + Math.max(0, peso - 150) * exRate;
+    return rate.faixa_150 + (peso - 150) * exRate;
   }
   if (rate.faixa_100 != null) {
-    return rate.faixa_100 + Math.max(0, peso - 100) * exRate;
+    return rate.faixa_100 + (peso - 100) * exRate;
   }
-  // Only up to faixa_70
   const base70 = rate.faixa_70 ?? rate.faixa_50 ?? 0;
-  return base70 + Math.max(0, peso - 70) * exRate;
+  return base70 + (peso - 70) * exRate;
 }
 
 function simulate(shipment: Shipment, rate: CarrierRate, icmsAliquota: number | null) {
