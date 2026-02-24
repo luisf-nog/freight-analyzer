@@ -1174,9 +1174,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                   ["TDA", drillRow.tda],
                   ["TSO", drillRow.tso],
                   ["Tx Redespacho", drillRow.tx_redespacho],
-                  ["Frete Peso (subtotal)", drillRow.frete_peso],
-                  ["ADM+Rodo+Tax", drillRow.adm_rodo_tax],
-                  ["Frete c/ ICMS", drillRow.frete_c_icms],
                   ["TRT", drillRow.trt_calc],
                   ["Frete Final", drillRow.frete_final],
                 ].map(([label, val]) => (
