@@ -12,6 +12,7 @@ import {
   Download, TrendingUp, TrendingDown, ChevronDown, ChevronRight,
   AlertTriangle, CheckCircle2, ShieldAlert, BarChart3, Search,
   DollarSign, Scale, Percent, FileText, ArrowUpDown, Clock,
+  MapPin, Weight, Target,
 } from "lucide-react";
 
 // === Constants ===
@@ -162,7 +163,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     load();
   }, [studyId, simulationCount]);
 
-  // Filtered rows
   const filtered = useMemo(() => {
     return rows.filter(r => {
       if (r.match_status === "NOT_FOUND") return false;
@@ -175,7 +175,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     });
   }, [rows, filterUF, filterWeight]);
 
-  // === Computed data ===
   const stats = useMemo(() => {
     const ok = filtered;
     const all = rows;
@@ -184,8 +183,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     const totalDif = totalCobrado - totalProposto;
     const totalPeso = ok.reduce((s, r) => s + r.shipment_peso, 0);
     const qtdNF = ok.length;
-
-    // Reliability
     const totalAll = all.length;
     const okCount = all.filter(r => r.match_status === "OK").length;
     const notFound = all.filter(r => r.match_status === "NOT_FOUND");
@@ -193,97 +190,71 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     const notFoundValue = notFound.reduce((s, r) => s + (r.valor_cobrado ?? 0), 0);
     const notFoundPeso = notFound.reduce((s, r) => s + r.shipment_peso, 0);
     const missingIcmsValue = missingIcms.reduce((s, r) => s + (r.valor_cobrado ?? 0), 0);
-
     return {
       totalCobrado, totalProposto, totalDif, totalPeso, qtdNF,
       econMediaNF: qtdNF > 0 ? totalDif / qtdNF : 0,
       rkgPago: totalPeso > 0 ? totalCobrado / totalPeso : 0,
       rkgProposta: totalPeso > 0 ? totalProposto / totalPeso : 0,
       pctDifGeral: totalProposto > 0 ? (totalDif / totalProposto) * 100 : 0,
-      // reliability
-      totalAll,
-      matchPct: totalAll > 0 ? (okCount / totalAll) * 100 : 0,
-      notFoundCount: notFound.length,
-      notFoundPct: totalAll > 0 ? (notFound.length / totalAll) * 100 : 0,
+      totalAll, matchPct: totalAll > 0 ? (okCount / totalAll) * 100 : 0,
+      notFoundCount: notFound.length, notFoundPct: totalAll > 0 ? (notFound.length / totalAll) * 100 : 0,
       notFoundValue, notFoundPeso,
-      missingIcmsCount: missingIcms.length,
-      missingIcmsPct: totalAll > 0 ? (missingIcms.length / totalAll) * 100 : 0,
+      missingIcmsCount: missingIcms.length, missingIcmsPct: totalAll > 0 ? (missingIcms.length / totalAll) * 100 : 0,
       missingIcmsValue,
     };
   }, [filtered, rows]);
 
-  // UF pivot
   const ufPivot = useMemo(() => {
     const map = new Map<string, { uf: string; qtd: number; cobrado: number; proposto: number; dif: number; peso: number; wins: number }>();
     for (const r of filtered) {
       const uf = r.shipment_uf;
       let agg = map.get(uf);
       if (!agg) agg = { uf, qtd: 0, cobrado: 0, proposto: 0, dif: 0, peso: 0, wins: 0 };
-      agg.qtd++;
-      agg.cobrado += r.valor_cobrado ?? 0;
-      agg.proposto += r.frete_final ?? 0;
-      agg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0);
-      agg.peso += r.shipment_peso;
+      agg.qtd++; agg.cobrado += r.valor_cobrado ?? 0; agg.proposto += r.frete_final ?? 0;
+      agg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0); agg.peso += r.shipment_peso;
       if ((r.valor_cobrado ?? 0) > (r.frete_final ?? 0)) agg.wins++;
       map.set(uf, agg);
     }
     const arr = Array.from(map.values());
     arr.sort((a, b) => {
-      const av = (a as any)[sortCol] ?? 0;
-      const bv = (b as any)[sortCol] ?? 0;
+      const av = (a as any)[sortCol] ?? 0; const bv = (b as any)[sortCol] ?? 0;
       return sortDir === "asc" ? av - bv : bv - av;
     });
     return arr;
   }, [filtered, sortCol, sortDir]);
 
-  // Top gains / losses by city
   const cityRanking = useMemo(() => {
     const map = new Map<string, { cidade: string; uf: string; qtd: number; cobrado: number; proposto: number; dif: number; peso: number }>();
     for (const r of filtered) {
       const key = `${r.shipment_uf}|${r.shipment_cidade}`;
       let agg = map.get(key);
       if (!agg) agg = { cidade: r.shipment_cidade, uf: r.shipment_uf, qtd: 0, cobrado: 0, proposto: 0, dif: 0, peso: 0 };
-      agg.qtd++;
-      agg.cobrado += r.valor_cobrado ?? 0;
-      agg.proposto += r.frete_final ?? 0;
-      agg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0);
-      agg.peso += r.shipment_peso;
+      agg.qtd++; agg.cobrado += r.valor_cobrado ?? 0; agg.proposto += r.frete_final ?? 0;
+      agg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0); agg.peso += r.shipment_peso;
       map.set(key, agg);
     }
     const all = Array.from(map.values());
-    const topGains = [...all].sort((a, b) => b.dif - a.dif).slice(0, 10);
-    const topLosses = [...all].sort((a, b) => a.dif - b.dif).slice(0, 10);
-    return { topGains, topLosses };
+    return { topGains: [...all].sort((a, b) => b.dif - a.dif).slice(0, 10), topLosses: [...all].sort((a, b) => a.dif - b.dif).slice(0, 10) };
   }, [filtered]);
 
-  // Variation distribution
   const variationDist = useMemo(() => {
     const counts = VARIATION_BANDS.map(() => 0);
     for (const r of filtered) {
-      const pct = r.pct_dif ?? 0;
-      // pct_dif is (cobrado - proposto) / proposto stored as decimal fraction
-      // But in our simulation it was stored as (cobrado - final) / final... let's recalculate
-      const proposto = r.frete_final ?? 0;
-      const cobrado = r.valor_cobrado ?? 0;
+      const proposto = r.frete_final ?? 0; const cobrado = r.valor_cobrado ?? 0;
       const variation = proposto > 0 ? (cobrado - proposto) / proposto : 0;
       for (let i = 0; i < VARIATION_BANDS.length; i++) {
-        if (variation > VARIATION_BANDS[i].min && variation <= VARIATION_BANDS[i].max) {
-          counts[i]++;
-          break;
-        }
+        if (variation > VARIATION_BANDS[i].min && variation <= VARIATION_BANDS[i].max) { counts[i]++; break; }
       }
     }
     const total = filtered.length || 1;
     return VARIATION_BANDS.map((b, i) => ({ ...b, count: counts[i], pct: (counts[i] / total) * 100 }));
   }, [filtered]);
 
-  // Drill-down city data
   const drillData = useMemo(() => {
     if (!drillCity) return [];
     return filtered.filter(r => r.shipment_uf === drillCity.uf && r.shipment_cidade === drillCity.cidade);
   }, [filtered, drillCity]);
 
-  // Available UFs
   const availableUFs = useMemo(() => {
     const set = new Set(rows.filter(r => r.match_status !== "NOT_FOUND").map(r => r.shipment_uf));
     return Array.from(set).sort();
@@ -302,7 +273,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     });
   };
 
-  // Get subrows for expanded UF (Capital/Interior + macro region)
   const getUFSubRows = (uf: string) => {
     const ufRows = filtered.filter(r => r.shipment_uf === uf);
     const map = new Map<string, { regiao: string; qtd: number; cobrado: number; proposto: number; dif: number; peso: number; wins: number }>();
@@ -310,35 +280,27 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
       const regiao = getCapInt(r.shipment_uf, r.shipment_cidade);
       let agg = map.get(regiao);
       if (!agg) agg = { regiao, qtd: 0, cobrado: 0, proposto: 0, dif: 0, peso: 0, wins: 0 };
-      agg.qtd++;
-      agg.cobrado += r.valor_cobrado ?? 0;
-      agg.proposto += r.frete_final ?? 0;
-      agg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0);
-      agg.peso += r.shipment_peso;
+      agg.qtd++; agg.cobrado += r.valor_cobrado ?? 0; agg.proposto += r.frete_final ?? 0;
+      agg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0); agg.peso += r.shipment_peso;
       if ((r.valor_cobrado ?? 0) > (r.frete_final ?? 0)) agg.wins++;
       map.set(regiao, agg);
     }
     return Array.from(map.values()).sort((a, b) => a.regiao.localeCompare(b.regiao));
   };
 
-  // Macro region pivot
   const macroPivot = useMemo(() => {
     const map = new Map<string, { regiao: string; qtd: number; cobrado: number; proposto: number; dif: number; peso: number }>();
     for (const r of filtered) {
       const regiao = getMacro(r.shipment_uf);
       let agg = map.get(regiao);
       if (!agg) agg = { regiao, qtd: 0, cobrado: 0, proposto: 0, dif: 0, peso: 0 };
-      agg.qtd++;
-      agg.cobrado += r.valor_cobrado ?? 0;
-      agg.proposto += r.frete_final ?? 0;
-      agg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0);
-      agg.peso += r.shipment_peso;
+      agg.qtd++; agg.cobrado += r.valor_cobrado ?? 0; agg.proposto += r.frete_final ?? 0;
+      agg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0); agg.peso += r.shipment_peso;
       map.set(regiao, agg);
     }
     return Array.from(map.values()).sort((a, b) => b.dif - a.dif);
   }, [filtered]);
 
-  // Weight band pivot
   const weightPivot = useMemo(() => {
     return WEIGHT_BANDS.map(band => {
       const bandRows = filtered.filter(r => r.shipment_peso > band.min && r.shipment_peso <= band.max);
@@ -352,7 +314,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     }).filter(b => b.qtd > 0);
   }, [filtered]);
 
-  // Deadline averages by UF
   const deadlineByUF = useMemo(() => {
     const realizedByUF = new Map<string, { total: number; count: number }>();
     for (const d of deadlinesRealized) {
@@ -374,9 +335,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   const getDeadlineUF = (uf: string) => {
     const r = deadlineByUF.realizedByUF.get(uf);
     const p = deadlineByUF.proposedByUF.get(uf);
-    const realizado = r ? r.total / r.count : null;
-    const proposto = p ? p.total / p.count : null;
-    return { realizado, proposto };
+    return { realizado: r ? r.total / r.count : null, proposto: p ? p.total / p.count : null };
   };
 
   const getDeadlineMacro = (regiao: string) => {
@@ -392,19 +351,18 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   };
 
   const getDeadlineCapInt = (uf: string, regiao: string) => {
-    // Filter deadlines for this UF, then check if city is capital or interior
     const capital = STATE_CAPITALS[uf];
     const isCapital = regiao === "Capital";
     const filterFn = (d: { uf: string; cidade_corrigida: string }) =>
       d.uf === uf && (isCapital ? d.cidade_corrigida === capital : d.cidade_corrigida !== capital);
     const rRows = deadlinesRealized.filter(filterFn);
     const pRows = deadlinesProposed.filter(filterFn);
-    const realizado = rRows.length > 0 ? rRows.reduce((s, d) => s + d.prazo_dias, 0) / rRows.length : null;
-    const proposto = pRows.length > 0 ? pRows.reduce((s, d) => s + d.prazo_dias, 0) / pRows.length : null;
-    return { realizado, proposto };
+    return {
+      realizado: rRows.length > 0 ? rRows.reduce((s, d) => s + d.prazo_dias, 0) / rRows.length : null,
+      proposto: pRows.length > 0 ? pRows.reduce((s, d) => s + d.prazo_dias, 0) / pRows.length : null,
+    };
   };
 
-  // Overall deadline stats
   const deadlineStats = useMemo(() => {
     if (!hasDeadlines) return null;
     const rTotal = deadlinesRealized.reduce((s, d) => s + d.prazo_dias, 0);
@@ -413,9 +371,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     const pCount = deadlinesProposed.length;
     const avgReal = rCount > 0 ? rTotal / rCount : null;
     const avgProp = pCount > 0 ? pTotal / pCount : null;
-    const cidadesReal = rCount;
-    const cidadesProp = pCount;
-    // Cities where proposal is faster
     let faster = 0, slower = 0, equal = 0;
     const realMap = new Map<string, number>();
     for (const d of deadlinesRealized) realMap.set(`${d.uf}|${d.cidade_corrigida}`, d.prazo_dias);
@@ -427,9 +382,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
         else equal++;
       }
     }
-    return { avgReal, avgProp, cidadesReal, cidadesProp, faster, slower, equal };
+    return { avgReal, avgProp, cidadesReal: rCount, cidadesProp: pCount, faster, slower, equal };
   }, [deadlinesRealized, deadlinesProposed, hasDeadlines]);
-
 
   const exportCSV = () => {
     const lines = ["UF;Região Macro;Capital/Interior;Qtd NF;Valor Cobrado;Valor Proposta;Diferença;% Dif;R$/kg Hoje;R$/kg Proposta;Peso Médio;Win Rate"];
@@ -452,192 +406,247 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   };
 
   if (simulationCount === 0) {
-    return <Card><CardContent className="py-12 text-center text-muted-foreground"><p className="text-lg">Rode a simulação primeiro para ver a análise.</p></CardContent></Card>;
+    return (
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+            <BarChart3 className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <p className="text-lg font-semibold text-foreground">Nenhuma simulação encontrada</p>
+          <p className="mt-1 text-sm text-muted-foreground">Rode a simulação primeiro para ver a análise completa.</p>
+        </CardContent>
+      </Card>
+    );
   }
   if (loading) {
-    return <Card><CardContent className="py-12 text-center text-muted-foreground"><div className="flex items-center justify-center gap-2"><div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />Carregando análise...</div></CardContent></Card>;
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-16">
+          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm font-medium text-muted-foreground">Carregando análise...</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   const difColor = (v: number) => v > 0 ? "text-emerald-600" : v < 0 ? "text-destructive" : "text-muted-foreground";
   const difBg = (v: number) => v > 0 ? "bg-emerald-50 dark:bg-emerald-950/30" : v < 0 ? "bg-red-50 dark:bg-red-950/30" : "";
 
   return (
-    <div className="space-y-6">
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={filterUF} onValueChange={setFilterUF}>
-          <SelectTrigger className="w-[140px]"><SelectValue placeholder="UF" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas UFs</SelectItem>
-            {availableUFs.map(uf => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={filterWeight} onValueChange={setFilterWeight}>
-          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Faixa de peso" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os pesos</SelectItem>
-            {WEIGHT_BANDS.map(b => <SelectItem key={b.label} value={b.label}>{b.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="sm" className="ml-auto gap-1" onClick={exportCSV}>
-          <Download className="h-4 w-4" /> Exportar
-        </Button>
-      </div>
+    <div className="space-y-8">
+      {/* Filters Bar */}
+      <Card className="border-none bg-gradient-to-r from-primary/5 via-transparent to-accent/5 shadow-none">
+        <CardContent className="flex flex-wrap items-center gap-3 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Target className="h-4 w-4" />
+            Filtros:
+          </div>
+          <Select value={filterUF} onValueChange={setFilterUF}>
+            <SelectTrigger className="w-[150px] bg-card"><SelectValue placeholder="UF" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas UFs</SelectItem>
+              {availableUFs.map(uf => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filterWeight} onValueChange={setFilterWeight}>
+            <SelectTrigger className="w-[170px] bg-card"><SelectValue placeholder="Faixa de peso" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os pesos</SelectItem>
+              {WEIGHT_BANDS.map(b => <SelectItem key={b.label} value={b.label}>{b.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" className="ml-auto gap-2" onClick={exportCSV}>
+            <Download className="h-4 w-4" /> Exportar CSV
+          </Button>
+        </CardContent>
+      </Card>
 
-      {/* BLOCO 1 — Resultado Geral */}
-      <div>
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          <DollarSign className="h-4 w-4" /> Resultado Geral
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <MetricCard label="Total Pago" value={formatBRL(stats.totalCobrado)} />
-          <MetricCard label="Total Proposta" value={formatBRL(stats.totalProposto)} />
-          <MetricCard
-            label="Diferença Total"
-            value={formatBRL(stats.totalDif)}
-            sub={`${stats.pctDifGeral >= 0 ? "+" : ""}${stats.pctDifGeral.toFixed(1)}%`}
-            color={difColor(stats.totalDif)}
-            icon={stats.totalDif > 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+      {/* ═══ BLOCO 1 — Hero KPIs ═══ */}
+      <section>
+        <SectionHeader icon={<DollarSign className="h-4 w-4" />} title="Resultado Geral" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <HeroCard
+            label="Total Pago (Atual)"
+            value={formatBRL(stats.totalCobrado)}
+            sublabel={`${stats.qtdNF.toLocaleString("pt-BR")} NFs`}
+            iconBg="bg-muted"
+            icon={<DollarSign className="h-5 w-5 text-muted-foreground" />}
           />
-          <MetricCard label="Economia Média/NF" value={formatBRL(stats.econMediaNF)} color={difColor(stats.econMediaNF)} />
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center p-4">
-              <p className="text-xs text-muted-foreground">R$/kg</p>
-              <div className="mt-1 flex items-baseline gap-3">
+          <HeroCard
+            label="Total Proposta"
+            value={formatBRL(stats.totalProposto)}
+            sublabel={`R$/kg ${stats.rkgProposta.toFixed(2)}`}
+            iconBg="bg-primary/10"
+            icon={<DollarSign className="h-5 w-5 text-primary" />}
+          />
+          <HeroCard
+            label="Economia Total"
+            value={formatBRL(stats.totalDif)}
+            sublabel={`${stats.pctDifGeral >= 0 ? "+" : ""}${stats.pctDifGeral.toFixed(1)}%`}
+            valueColor={difColor(stats.totalDif)}
+            iconBg={stats.totalDif > 0 ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"}
+            icon={stats.totalDif > 0 ? <TrendingUp className="h-5 w-5 text-emerald-600" /> : <TrendingDown className="h-5 w-5 text-destructive" />}
+            highlight
+          />
+          <HeroCard
+            label="Economia Média / NF"
+            value={formatBRL(stats.econMediaNF)}
+            valueColor={difColor(stats.econMediaNF)}
+            iconBg="bg-accent/10"
+            icon={<Scale className="h-5 w-5 text-accent" />}
+          />
+          <Card className="relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent" />
+            <CardContent className="relative flex flex-col items-center justify-center p-5">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">R$ / kg</p>
+              <div className="mt-3 flex items-center gap-4">
                 <div className="text-center">
-                  <p className="text-[10px] text-muted-foreground">Pago</p>
-                  <p className="text-base font-bold">R$ {stats.rkgPago.toFixed(2)}</p>
+                  <p className="text-[11px] text-muted-foreground">Pago</p>
+                  <p className="text-xl font-bold tabular-nums">R$ {stats.rkgPago.toFixed(2)}</p>
                 </div>
-                <span className="text-muted-foreground">→</span>
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+                  <span className="text-sm text-muted-foreground">→</span>
+                </div>
                 <div className="text-center">
-                  <p className="text-[10px] text-muted-foreground">Proposta</p>
-                  <p className="text-base font-bold">R$ {stats.rkgProposta.toFixed(2)}</p>
+                  <p className="text-[11px] text-muted-foreground">Proposta</p>
+                  <p className="text-xl font-bold tabular-nums text-primary">R$ {stats.rkgProposta.toFixed(2)}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
-      </div>
+      </section>
 
-      {/* BLOCO Prazo */}
+      {/* ═══ BLOCO Prazo ═══ */}
       {deadlineStats && (
-        <div>
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            <Clock className="h-4 w-4" /> Comparativo de Prazos
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center p-4">
-                <p className="text-xs text-muted-foreground">Prazo Médio Hoje</p>
-                <p className="mt-1 text-lg font-bold">{deadlineStats.avgReal !== null ? deadlineStats.avgReal.toFixed(1) + " dias" : "—"}</p>
-                <p className="text-[10px] text-muted-foreground">{deadlineStats.cidadesReal} cidades</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center p-4">
-                <p className="text-xs text-muted-foreground">Prazo Médio Proposta</p>
-                <p className="mt-1 text-lg font-bold">{deadlineStats.avgProp !== null ? deadlineStats.avgProp.toFixed(1) + " dias" : "—"}</p>
-                <p className="text-[10px] text-muted-foreground">{deadlineStats.cidadesProp} cidades</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center p-4">
-                <p className="text-xs text-muted-foreground">Diferença Média</p>
-                {deadlineStats.avgReal !== null && deadlineStats.avgProp !== null ? (() => {
-                  const d = deadlineStats.avgReal - deadlineStats.avgProp;
-                  return (
-                    <>
-                      <p className={`mt-1 text-lg font-bold ${d > 0 ? "text-emerald-600" : d < 0 ? "text-destructive" : ""}`}>
-                        {d > 0 ? "-" : "+"}{Math.abs(d).toFixed(1)} dias
-                      </p>
-                      <p className={`text-[10px] ${d > 0 ? "text-emerald-600" : d < 0 ? "text-destructive" : "text-muted-foreground"}`}>
-                        {d > 0 ? "Proposta mais rápida" : d < 0 ? "Proposta mais lenta" : "Mesmo prazo"}
-                      </p>
-                    </>
-                  );
-                })() : <p className="mt-1 text-lg font-bold">—</p>}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center p-4">
-                <p className="text-xs text-muted-foreground">Cidades Comparadas</p>
-                <div className="mt-1 flex items-baseline gap-3 text-sm">
+        <section>
+          <SectionHeader icon={<Clock className="h-4 w-4" />} title="Comparativo de Prazos" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <HeroCard
+              label="Prazo Médio Hoje"
+              value={deadlineStats.avgReal !== null ? deadlineStats.avgReal.toFixed(1) + " dias" : "—"}
+              sublabel={`${deadlineStats.cidadesReal.toLocaleString("pt-BR")} cidades`}
+              iconBg="bg-muted"
+              icon={<Clock className="h-5 w-5 text-muted-foreground" />}
+            />
+            <HeroCard
+              label="Prazo Médio Proposta"
+              value={deadlineStats.avgProp !== null ? deadlineStats.avgProp.toFixed(1) + " dias" : "—"}
+              sublabel={`${deadlineStats.cidadesProp.toLocaleString("pt-BR")} cidades`}
+              iconBg="bg-primary/10"
+              icon={<Clock className="h-5 w-5 text-primary" />}
+            />
+            {(() => {
+              if (deadlineStats.avgReal === null || deadlineStats.avgProp === null) return (
+                <HeroCard label="Diferença Média" value="—" iconBg="bg-muted" icon={<Clock className="h-5 w-5 text-muted-foreground" />} />
+              );
+              const d = deadlineStats.avgReal - deadlineStats.avgProp;
+              return (
+                <HeroCard
+                  label="Diferença Média"
+                  value={`${d > 0 ? "-" : "+"}${Math.abs(d).toFixed(1)} dias`}
+                  sublabel={d > 0 ? "Proposta mais rápida" : d < 0 ? "Proposta mais lenta" : "Mesmo prazo"}
+                  valueColor={d > 0 ? "text-emerald-600" : d < 0 ? "text-destructive" : ""}
+                  iconBg={d > 0 ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-red-100 dark:bg-red-900/30"}
+                  icon={d > 0 ? <TrendingUp className="h-5 w-5 text-emerald-600" /> : <TrendingDown className="h-5 w-5 text-destructive" />}
+                  highlight
+                />
+              );
+            })()}
+            <Card className="relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent" />
+              <CardContent className="relative flex flex-col items-center justify-center p-5">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Cidades Comparadas</p>
+                <div className="mt-3 flex items-center gap-5">
                   <div className="text-center">
-                    <p className="text-[10px] text-emerald-600">Mais rápido</p>
-                    <p className="font-bold text-emerald-600">{deadlineStats.faster}</p>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 mx-auto mb-1">
+                      <span className="text-lg font-bold text-emerald-600">{deadlineStats.faster}</span>
+                    </div>
+                    <p className="text-[10px] font-medium text-emerald-600">Mais rápido</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-[10px] text-muted-foreground">Igual</p>
-                    <p className="font-bold">{deadlineStats.equal}</p>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted mx-auto mb-1">
+                      <span className="text-lg font-bold text-muted-foreground">{deadlineStats.equal}</span>
+                    </div>
+                    <p className="text-[10px] font-medium text-muted-foreground">Igual</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-[10px] text-destructive">Mais lento</p>
-                    <p className="font-bold text-destructive">{deadlineStats.slower}</p>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 mx-auto mb-1">
+                      <span className="text-lg font-bold text-destructive">{deadlineStats.slower}</span>
+                    </div>
+                    <p className="text-[10px] font-medium text-destructive">Mais lento</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </div>
-        </div>
+        </section>
       )}
 
-      <div>
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          <ShieldAlert className="h-4 w-4" /> Confiabilidade do Estudo
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className={stats.matchPct >= 90 ? "border-emerald-200 dark:border-emerald-800" : "border-amber-200 dark:border-amber-800"}>
-            <CardContent className="flex items-center gap-3 p-4">
-              <CheckCircle2 className={`h-8 w-8 ${stats.matchPct >= 90 ? "text-emerald-600" : "text-amber-500"}`} />
+      {/* ═══ BLOCO 2 — Confiabilidade ═══ */}
+      <section>
+        <SectionHeader icon={<ShieldAlert className="h-4 w-4" />} title="Confiabilidade do Estudo" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className={`relative overflow-hidden ${stats.matchPct >= 90 ? "border-emerald-200 dark:border-emerald-800" : "border-amber-200 dark:border-amber-800"}`}>
+            <div className={`absolute inset-0 ${stats.matchPct >= 90 ? "bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-900/10" : "bg-gradient-to-br from-amber-50/50 to-transparent dark:from-amber-900/10"}`} />
+            <CardContent className="relative flex items-center gap-4 p-5">
+              <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${stats.matchPct >= 90 ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-amber-100 dark:bg-amber-900/30"}`}>
+                <CheckCircle2 className={`h-6 w-6 ${stats.matchPct >= 90 ? "text-emerald-600" : "text-amber-500"}`} />
+              </div>
               <div>
-                <p className="text-xs text-muted-foreground">Match Cidade+UF</p>
-                <p className="text-xl font-bold">{stats.matchPct.toFixed(1)}%</p>
+                <p className="text-xs font-medium text-muted-foreground">Match Cidade+UF</p>
+                <p className="text-2xl font-bold">{stats.matchPct.toFixed(1)}%</p>
               </div>
             </CardContent>
           </Card>
-          <Card className={stats.notFoundCount > 0 ? "border-amber-200 dark:border-amber-800" : ""}>
-            <CardContent className="flex items-center gap-3 p-4">
-              <AlertTriangle className="h-8 w-8 text-amber-500" />
+          <Card className={`relative overflow-hidden ${stats.notFoundCount > 0 ? "border-amber-200 dark:border-amber-800" : ""}`}>
+            <CardContent className="flex items-center gap-4 p-5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30">
+                <AlertTriangle className="h-6 w-6 text-amber-500" />
+              </div>
               <div>
-                <p className="text-xs text-muted-foreground">NOT_FOUND</p>
-                <p className="text-xl font-bold">{stats.notFoundCount.toLocaleString("pt-BR")}</p>
-                <p className="text-[10px] text-muted-foreground">{stats.notFoundPct.toFixed(1)}% — {formatBRL(stats.notFoundValue)} ({formatNumber(stats.notFoundPeso, 0)} kg)</p>
+                <p className="text-xs font-medium text-muted-foreground">NOT_FOUND</p>
+                <p className="text-2xl font-bold">{stats.notFoundCount.toLocaleString("pt-BR")}</p>
+                <p className="text-[10px] text-muted-foreground">{stats.notFoundPct.toFixed(1)}% — {formatBRL(stats.notFoundValue)}</p>
               </div>
             </CardContent>
           </Card>
-          <Card className={stats.missingIcmsCount > 0 ? "border-orange-200 dark:border-orange-800" : ""}>
-            <CardContent className="flex items-center gap-3 p-4">
-              <FileText className="h-8 w-8 text-orange-500" />
+          <Card className={`relative overflow-hidden ${stats.missingIcmsCount > 0 ? "border-orange-200 dark:border-orange-800" : ""}`}>
+            <CardContent className="flex items-center gap-4 p-5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-100 dark:bg-orange-900/30">
+                <FileText className="h-6 w-6 text-orange-500" />
+              </div>
               <div>
-                <p className="text-xs text-muted-foreground">MISSING_ICMS</p>
-                <p className="text-xl font-bold">{stats.missingIcmsCount.toLocaleString("pt-BR")}</p>
+                <p className="text-xs font-medium text-muted-foreground">MISSING_ICMS</p>
+                <p className="text-2xl font-bold">{stats.missingIcmsCount.toLocaleString("pt-BR")}</p>
                 <p className="text-[10px] text-muted-foreground">{stats.missingIcmsPct.toFixed(1)}% — {formatBRL(stats.missingIcmsValue)}</p>
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="flex items-center gap-3 p-4">
-              <Scale className="h-8 w-8 text-primary" />
+          <Card className="relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent" />
+            <CardContent className="relative flex items-center gap-4 p-5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                <Scale className="h-6 w-6 text-primary" />
+              </div>
               <div>
-                <p className="text-xs text-muted-foreground">Volume Analisado</p>
-                <p className="text-xl font-bold">{stats.qtdNF.toLocaleString("pt-BR")} NFs</p>
+                <p className="text-xs font-medium text-muted-foreground">Volume Analisado</p>
+                <p className="text-2xl font-bold">{stats.qtdNF.toLocaleString("pt-BR")} <span className="text-sm font-normal text-muted-foreground">NFs</span></p>
                 <p className="text-[10px] text-muted-foreground">{formatNumber(stats.totalPeso, 0)} kg total</p>
               </div>
             </CardContent>
           </Card>
         </div>
-      </div>
+      </section>
 
-      {/* BLOCO 3 — Tabela por UF + Macro Região */}
-      <div>
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          <BarChart3 className="h-4 w-4" /> Análise por UF / Região
-        </h2>
+      {/* ═══ BLOCO 3 — Tabela por UF / Macro Região / Peso ═══ */}
+      <section>
+        <SectionHeader icon={<MapPin className="h-4 w-4" />} title="Análise Geográfica e por Peso" />
         <Tabs defaultValue="uf">
-          <TabsList className="mb-3">
-            <TabsTrigger value="uf">Por UF</TabsTrigger>
-            <TabsTrigger value="macro">Por Macro Região</TabsTrigger>
-            <TabsTrigger value="peso">Por Faixa de Peso</TabsTrigger>
+          <TabsList className="mb-4 h-10">
+            <TabsTrigger value="uf" className="gap-1.5"><MapPin className="h-3.5 w-3.5" /> Por UF</TabsTrigger>
+            <TabsTrigger value="macro" className="gap-1.5"><BarChart3 className="h-3.5 w-3.5" /> Macro Região</TabsTrigger>
+            <TabsTrigger value="peso" className="gap-1.5"><Weight className="h-3.5 w-3.5" /> Faixa de Peso</TabsTrigger>
           </TabsList>
 
           <TabsContent value="uf">
@@ -646,21 +655,21 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                 <div className="overflow-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow>
+                      <TableRow className="bg-muted/30">
                         <TableHead className="w-8" />
-                        <TableHead className="cursor-pointer" onClick={() => toggleSort("uf")}>UF <ArrowUpDown className="inline h-3 w-3" /></TableHead>
-                        <TableHead>Macro</TableHead>
-                        <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("qtd")}>Qtd NF</TableHead>
-                        <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("cobrado")}>Pago</TableHead>
-                        <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("proposto")}>Proposta</TableHead>
-                        <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("diferenca")}>Diferença <ArrowUpDown className="inline h-3 w-3" /></TableHead>
-                        <TableHead className="text-right">% Dif</TableHead>
-                        <TableHead className="text-right">R$/kg Hoje</TableHead>
-                        <TableHead className="text-right">R$/kg Prop.</TableHead>
-                        <TableHead className="text-right">Peso Médio</TableHead>
-                        <TableHead className="text-right">Win Rate</TableHead>
-                        {hasDeadlines && <TableHead className="text-right">Prazo Real.</TableHead>}
-                        {hasDeadlines && <TableHead className="text-right">Prazo Prop.</TableHead>}
+                        <TableHead className="cursor-pointer font-semibold" onClick={() => toggleSort("uf")}>UF <ArrowUpDown className="inline h-3 w-3 opacity-50" /></TableHead>
+                        <TableHead className="font-semibold">Macro</TableHead>
+                        <TableHead className="cursor-pointer text-right font-semibold" onClick={() => toggleSort("qtd")}>Qtd NF</TableHead>
+                        <TableHead className="cursor-pointer text-right font-semibold" onClick={() => toggleSort("cobrado")}>Pago</TableHead>
+                        <TableHead className="cursor-pointer text-right font-semibold" onClick={() => toggleSort("proposto")}>Proposta</TableHead>
+                        <TableHead className="cursor-pointer text-right font-semibold" onClick={() => toggleSort("diferenca")}>Diferença <ArrowUpDown className="inline h-3 w-3 opacity-50" /></TableHead>
+                        <TableHead className="text-right font-semibold">% Dif</TableHead>
+                        <TableHead className="text-right font-semibold">R$/kg Hoje</TableHead>
+                        <TableHead className="text-right font-semibold">R$/kg Prop.</TableHead>
+                        <TableHead className="text-right font-semibold">Peso Médio</TableHead>
+                        <TableHead className="text-right font-semibold">Win Rate</TableHead>
+                        {hasDeadlines && <TableHead className="text-right font-semibold">Prazo Real.</TableHead>}
+                        {hasDeadlines && <TableHead className="text-right font-semibold">Prazo Prop.</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -676,21 +685,21 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
 
                         return (
                           <Fragment key={uf.uf}>
-                            <TableRow className="cursor-pointer font-medium hover:bg-muted/50" onClick={() => toggleUF(uf.uf)}>
-                              <TableCell>{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</TableCell>
-                              <TableCell className="font-bold">{uf.uf}</TableCell>
-                              <TableCell><Badge variant="outline" className="text-[10px]">{getMacro(uf.uf)}</Badge></TableCell>
-                              <TableCell className="text-right">{uf.qtd.toLocaleString("pt-BR")}</TableCell>
-                              <TableCell className="text-right">{formatBRL(uf.cobrado)}</TableCell>
-                              <TableCell className="text-right">{formatBRL(uf.proposto)}</TableCell>
-                              <TableCell className={`text-right font-bold ${difColor(uf.dif)}`}>{formatBRL(uf.dif)}</TableCell>
-                              <TableCell className={`text-right ${difColor(uf.dif)}`}>{pct >= 0 ? "+" : ""}{pct.toFixed(1)}%</TableCell>
-                              <TableCell className="text-right">R$ {rkgH.toFixed(2)}</TableCell>
-                              <TableCell className="text-right">R$ {rkgP.toFixed(2)}</TableCell>
-                              <TableCell className="text-right">{formatNumber(pm, 1)}</TableCell>
+                            <TableRow className="cursor-pointer font-medium transition-colors hover:bg-muted/50" onClick={() => toggleUF(uf.uf)}>
+                              <TableCell className="w-8">{expanded ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}</TableCell>
+                              <TableCell className="font-bold text-foreground">{uf.uf}</TableCell>
+                              <TableCell><Badge variant="outline" className="text-[10px] font-medium">{getMacro(uf.uf)}</Badge></TableCell>
+                              <TableCell className="text-right tabular-nums">{uf.qtd.toLocaleString("pt-BR")}</TableCell>
+                              <TableCell className="text-right tabular-nums">{formatBRL(uf.cobrado)}</TableCell>
+                              <TableCell className="text-right tabular-nums">{formatBRL(uf.proposto)}</TableCell>
+                              <TableCell className={`text-right font-bold tabular-nums ${difColor(uf.dif)}`}>{formatBRL(uf.dif)}</TableCell>
+                              <TableCell className={`text-right tabular-nums ${difColor(uf.dif)}`}>{pct >= 0 ? "+" : ""}{pct.toFixed(1)}%</TableCell>
+                              <TableCell className="text-right tabular-nums">R$ {rkgH.toFixed(2)}</TableCell>
+                              <TableCell className="text-right tabular-nums">R$ {rkgP.toFixed(2)}</TableCell>
+                              <TableCell className="text-right tabular-nums">{formatNumber(pm, 1)}</TableCell>
                               <TableCell className="text-right"><Badge variant={wr >= 60 ? "default" : "secondary"} className="text-[10px]">{wr.toFixed(0)}%</Badge></TableCell>
-                              {dl && <TableCell className="text-right">{dl.realizado !== null ? dl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
-                              {dl && <TableCell className={`text-right ${dl.realizado !== null && dl.proposto !== null ? (dl.proposto < dl.realizado ? "text-emerald-600" : dl.proposto > dl.realizado ? "text-destructive" : "") : ""}`}>{dl.proposto !== null ? dl.proposto.toFixed(1) + "d" : "—"}</TableCell>}
+                              {dl && <TableCell className="text-right tabular-nums">{dl.realizado !== null ? dl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
+                              {dl && <TableCell className={`text-right tabular-nums ${dl.realizado !== null && dl.proposto !== null ? (dl.proposto < dl.realizado ? "text-emerald-600" : dl.proposto > dl.realizado ? "text-destructive" : "") : ""}`}>{dl.proposto !== null ? dl.proposto.toFixed(1) + "d" : "—"}</TableCell>}
                             </TableRow>
                             {subRows.map(s => {
                               const sp = s.proposto > 0 ? (s.dif / s.proposto) * 100 : 0;
@@ -700,21 +709,21 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                               const swr = s.qtd > 0 ? (s.wins / s.qtd) * 100 : 0;
                               const sdl = hasDeadlines ? getDeadlineCapInt(uf.uf, s.regiao) : null;
                               return (
-                                <TableRow key={`${uf.uf}-${s.regiao}`} className="bg-muted/20 text-xs">
+                                <TableRow key={`${uf.uf}-${s.regiao}`} className="bg-muted/10 text-xs">
                                   <TableCell />
                                   <TableCell className="pl-8 text-muted-foreground">{uf.uf}</TableCell>
-                                  <TableCell><Badge variant="outline" className="text-[10px]">{s.regiao}</Badge></TableCell>
-                                  <TableCell className="text-right">{s.qtd.toLocaleString("pt-BR")}</TableCell>
-                                  <TableCell className="text-right">{formatBRL(s.cobrado)}</TableCell>
-                                  <TableCell className="text-right">{formatBRL(s.proposto)}</TableCell>
-                                  <TableCell className={`text-right font-semibold ${difColor(s.dif)}`}>{formatBRL(s.dif)}</TableCell>
-                                  <TableCell className={`text-right ${difColor(s.dif)}`}>{sp >= 0 ? "+" : ""}{sp.toFixed(1)}%</TableCell>
-                                  <TableCell className="text-right">R$ {srkgH.toFixed(2)}</TableCell>
-                                  <TableCell className="text-right">R$ {srkgP.toFixed(2)}</TableCell>
-                                  <TableCell className="text-right">{formatNumber(spm, 1)}</TableCell>
-                                  <TableCell className="text-right">{swr.toFixed(0)}%</TableCell>
-                                  {sdl && <TableCell className="text-right">{sdl.realizado !== null ? sdl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
-                                  {sdl && <TableCell className={`text-right ${sdl.realizado !== null && sdl.proposto !== null ? (sdl.proposto < sdl.realizado ? "text-emerald-600" : sdl.proposto > sdl.realizado ? "text-destructive" : "") : ""}`}>{sdl.proposto !== null ? sdl.proposto.toFixed(1) + "d" : "—"}</TableCell>}
+                                  <TableCell><Badge variant="outline" className="border-dashed text-[10px]">{s.regiao}</Badge></TableCell>
+                                  <TableCell className="text-right tabular-nums">{s.qtd.toLocaleString("pt-BR")}</TableCell>
+                                  <TableCell className="text-right tabular-nums">{formatBRL(s.cobrado)}</TableCell>
+                                  <TableCell className="text-right tabular-nums">{formatBRL(s.proposto)}</TableCell>
+                                  <TableCell className={`text-right font-semibold tabular-nums ${difColor(s.dif)}`}>{formatBRL(s.dif)}</TableCell>
+                                  <TableCell className={`text-right tabular-nums ${difColor(s.dif)}`}>{sp >= 0 ? "+" : ""}{sp.toFixed(1)}%</TableCell>
+                                  <TableCell className="text-right tabular-nums">R$ {srkgH.toFixed(2)}</TableCell>
+                                  <TableCell className="text-right tabular-nums">R$ {srkgP.toFixed(2)}</TableCell>
+                                  <TableCell className="text-right tabular-nums">{formatNumber(spm, 1)}</TableCell>
+                                  <TableCell className="text-right tabular-nums">{swr.toFixed(0)}%</TableCell>
+                                  {sdl && <TableCell className="text-right tabular-nums">{sdl.realizado !== null ? sdl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
+                                  {sdl && <TableCell className={`text-right tabular-nums ${sdl.realizado !== null && sdl.proposto !== null ? (sdl.proposto < sdl.realizado ? "text-emerald-600" : sdl.proposto > sdl.realizado ? "text-destructive" : "") : ""}`}>{sdl.proposto !== null ? sdl.proposto.toFixed(1) + "d" : "—"}</TableCell>}
                                 </TableRow>
                               );
                             })}
@@ -722,21 +731,21 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                         );
                       })}
                       {/* Total */}
-                      <TableRow className="border-t-2 bg-muted/30 font-bold">
+                      <TableRow className="border-t-2 border-primary/20 bg-muted/40 font-bold">
                         <TableCell />
-                        <TableCell>TOTAL</TableCell>
+                        <TableCell className="text-primary">TOTAL</TableCell>
                         <TableCell />
-                        <TableCell className="text-right">{stats.qtdNF.toLocaleString("pt-BR")}</TableCell>
-                        <TableCell className="text-right">{formatBRL(stats.totalCobrado)}</TableCell>
-                        <TableCell className="text-right">{formatBRL(stats.totalProposto)}</TableCell>
-                        <TableCell className={`text-right ${difColor(stats.totalDif)}`}>{formatBRL(stats.totalDif)}</TableCell>
-                        <TableCell className={`text-right ${difColor(stats.totalDif)}`}>{stats.pctDifGeral >= 0 ? "+" : ""}{stats.pctDifGeral.toFixed(1)}%</TableCell>
-                        <TableCell className="text-right">R$ {stats.rkgPago.toFixed(2)}</TableCell>
-                        <TableCell className="text-right">R$ {stats.rkgProposta.toFixed(2)}</TableCell>
-                        <TableCell className="text-right">{formatNumber(stats.qtdNF > 0 ? stats.totalPeso / stats.qtdNF : 0, 1)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{stats.qtdNF.toLocaleString("pt-BR")}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatBRL(stats.totalCobrado)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatBRL(stats.totalProposto)}</TableCell>
+                        <TableCell className={`text-right tabular-nums ${difColor(stats.totalDif)}`}>{formatBRL(stats.totalDif)}</TableCell>
+                        <TableCell className={`text-right tabular-nums ${difColor(stats.totalDif)}`}>{stats.pctDifGeral >= 0 ? "+" : ""}{stats.pctDifGeral.toFixed(1)}%</TableCell>
+                        <TableCell className="text-right tabular-nums">R$ {stats.rkgPago.toFixed(2)}</TableCell>
+                        <TableCell className="text-right tabular-nums">R$ {stats.rkgProposta.toFixed(2)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatNumber(stats.qtdNF > 0 ? stats.totalPeso / stats.qtdNF : 0, 1)}</TableCell>
                         <TableCell />
-                        {hasDeadlines && <TableCell className="text-right">{deadlineStats?.avgReal !== null ? deadlineStats?.avgReal?.toFixed(1) + "d" : "—"}</TableCell>}
-                        {hasDeadlines && <TableCell className="text-right">{deadlineStats?.avgProp !== null ? deadlineStats?.avgProp?.toFixed(1) + "d" : "—"}</TableCell>}
+                        {hasDeadlines && <TableCell className="text-right tabular-nums">{deadlineStats?.avgReal !== null ? deadlineStats?.avgReal?.toFixed(1) + "d" : "—"}</TableCell>}
+                        {hasDeadlines && <TableCell className="text-right tabular-nums">{deadlineStats?.avgProp !== null ? deadlineStats?.avgProp?.toFixed(1) + "d" : "—"}</TableCell>}
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -750,18 +759,18 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Macro Região</TableHead>
-                      <TableHead className="text-right">Qtd NF</TableHead>
-                      <TableHead className="text-right">Pago</TableHead>
-                      <TableHead className="text-right">Proposta</TableHead>
-                      <TableHead className="text-right">Diferença</TableHead>
-                      <TableHead className="text-right">% Dif</TableHead>
-                      <TableHead className="text-right">R$/kg Hoje</TableHead>
-                      <TableHead className="text-right">R$/kg Prop.</TableHead>
-                      <TableHead className="text-right">Peso Médio</TableHead>
-                      {hasDeadlines && <TableHead className="text-right">Prazo Real.</TableHead>}
-                      {hasDeadlines && <TableHead className="text-right">Prazo Prop.</TableHead>}
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="font-semibold">Macro Região</TableHead>
+                      <TableHead className="text-right font-semibold">Qtd NF</TableHead>
+                      <TableHead className="text-right font-semibold">Pago</TableHead>
+                      <TableHead className="text-right font-semibold">Proposta</TableHead>
+                      <TableHead className="text-right font-semibold">Diferença</TableHead>
+                      <TableHead className="text-right font-semibold">% Dif</TableHead>
+                      <TableHead className="text-right font-semibold">R$/kg Hoje</TableHead>
+                      <TableHead className="text-right font-semibold">R$/kg Prop.</TableHead>
+                      <TableHead className="text-right font-semibold">Peso Médio</TableHead>
+                      {hasDeadlines && <TableHead className="text-right font-semibold">Prazo Real.</TableHead>}
+                      {hasDeadlines && <TableHead className="text-right font-semibold">Prazo Prop.</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -771,16 +780,16 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                       return (
                         <TableRow key={m.regiao}>
                           <TableCell className="font-semibold">{m.regiao}</TableCell>
-                          <TableCell className="text-right">{m.qtd.toLocaleString("pt-BR")}</TableCell>
-                          <TableCell className="text-right">{formatBRL(m.cobrado)}</TableCell>
-                          <TableCell className="text-right">{formatBRL(m.proposto)}</TableCell>
-                          <TableCell className={`text-right font-bold ${difColor(m.dif)}`}>{formatBRL(m.dif)}</TableCell>
-                          <TableCell className={`text-right ${difColor(m.dif)}`}>{pct >= 0 ? "+" : ""}{pct.toFixed(1)}%</TableCell>
-                          <TableCell className="text-right">R$ {(m.peso > 0 ? m.cobrado / m.peso : 0).toFixed(2)}</TableCell>
-                          <TableCell className="text-right">R$ {(m.peso > 0 ? m.proposto / m.peso : 0).toFixed(2)}</TableCell>
-                          <TableCell className="text-right">{formatNumber(m.qtd > 0 ? m.peso / m.qtd : 0, 1)}</TableCell>
-                          {dl && <TableCell className="text-right">{dl.realizado !== null ? dl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
-                          {dl && <TableCell className={`text-right ${dl.realizado !== null && dl.proposto !== null ? (dl.proposto < dl.realizado ? "text-emerald-600" : dl.proposto > dl.realizado ? "text-destructive" : "") : ""}`}>{dl.proposto !== null ? dl.proposto.toFixed(1) + "d" : "—"}</TableCell>}
+                          <TableCell className="text-right tabular-nums">{m.qtd.toLocaleString("pt-BR")}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatBRL(m.cobrado)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatBRL(m.proposto)}</TableCell>
+                          <TableCell className={`text-right font-bold tabular-nums ${difColor(m.dif)}`}>{formatBRL(m.dif)}</TableCell>
+                          <TableCell className={`text-right tabular-nums ${difColor(m.dif)}`}>{pct >= 0 ? "+" : ""}{pct.toFixed(1)}%</TableCell>
+                          <TableCell className="text-right tabular-nums">R$ {(m.peso > 0 ? m.cobrado / m.peso : 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-right tabular-nums">R$ {(m.peso > 0 ? m.proposto / m.peso : 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatNumber(m.qtd > 0 ? m.peso / m.qtd : 0, 1)}</TableCell>
+                          {dl && <TableCell className="text-right tabular-nums">{dl.realizado !== null ? dl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
+                          {dl && <TableCell className={`text-right tabular-nums ${dl.realizado !== null && dl.proposto !== null ? (dl.proposto < dl.realizado ? "text-emerald-600" : dl.proposto > dl.realizado ? "text-destructive" : "") : ""}`}>{dl.proposto !== null ? dl.proposto.toFixed(1) + "d" : "—"}</TableCell>}
                         </TableRow>
                       );
                     })}
@@ -796,17 +805,17 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                 <div className="overflow-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>Faixa de Peso</TableHead>
-                        <TableHead className="text-right">Qtd NF</TableHead>
-                        <TableHead className="text-right">Pago</TableHead>
-                        <TableHead className="text-right">Proposta</TableHead>
-                        <TableHead className="text-right">Diferença</TableHead>
-                        <TableHead className="text-right">% Dif</TableHead>
-                        <TableHead className="text-right">R$/kg Hoje</TableHead>
-                        <TableHead className="text-right">R$/kg Prop.</TableHead>
-                        <TableHead className="text-right">Peso Médio</TableHead>
-                        <TableHead className="text-right">Win Rate</TableHead>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="font-semibold">Faixa de Peso</TableHead>
+                        <TableHead className="text-right font-semibold">Qtd NF</TableHead>
+                        <TableHead className="text-right font-semibold">Pago</TableHead>
+                        <TableHead className="text-right font-semibold">Proposta</TableHead>
+                        <TableHead className="text-right font-semibold">Diferença</TableHead>
+                        <TableHead className="text-right font-semibold">% Dif</TableHead>
+                        <TableHead className="text-right font-semibold">R$/kg Hoje</TableHead>
+                        <TableHead className="text-right font-semibold">R$/kg Prop.</TableHead>
+                        <TableHead className="text-right font-semibold">Peso Médio</TableHead>
+                        <TableHead className="text-right font-semibold">Win Rate</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -819,14 +828,14 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                         return (
                           <TableRow key={b.label}>
                             <TableCell className="font-semibold">{b.label}</TableCell>
-                            <TableCell className="text-right">{b.qtd.toLocaleString("pt-BR")}</TableCell>
-                            <TableCell className="text-right">{formatBRL(b.cobrado)}</TableCell>
-                            <TableCell className="text-right">{formatBRL(b.proposto)}</TableCell>
-                            <TableCell className={`text-right font-bold ${difColor(b.dif)}`}>{formatBRL(b.dif)}</TableCell>
-                            <TableCell className={`text-right ${difColor(b.dif)}`}>{pct >= 0 ? "+" : ""}{pct.toFixed(1)}%</TableCell>
-                            <TableCell className="text-right">R$ {rkgH.toFixed(2)}</TableCell>
-                            <TableCell className="text-right">R$ {rkgP.toFixed(2)}</TableCell>
-                            <TableCell className="text-right">{formatNumber(pm, 1)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{b.qtd.toLocaleString("pt-BR")}</TableCell>
+                            <TableCell className="text-right tabular-nums">{formatBRL(b.cobrado)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{formatBRL(b.proposto)}</TableCell>
+                            <TableCell className={`text-right font-bold tabular-nums ${difColor(b.dif)}`}>{formatBRL(b.dif)}</TableCell>
+                            <TableCell className={`text-right tabular-nums ${difColor(b.dif)}`}>{pct >= 0 ? "+" : ""}{pct.toFixed(1)}%</TableCell>
+                            <TableCell className="text-right tabular-nums">R$ {rkgH.toFixed(2)}</TableCell>
+                            <TableCell className="text-right tabular-nums">R$ {rkgP.toFixed(2)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{formatNumber(pm, 1)}</TableCell>
                             <TableCell className="text-right"><Badge variant={wr >= 60 ? "default" : "secondary"} className="text-[10px]">{wr.toFixed(0)}%</Badge></TableCell>
                           </TableRow>
                         );
@@ -838,38 +847,42 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
             </Card>
           </TabsContent>
         </Tabs>
-      </div>
+      </section>
 
-
-      <div>
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          <Search className="h-4 w-4" /> Onde Ganha e Onde Dói
-        </h2>
+      {/* ═══ BLOCO 4 — Top Ganhos / Perdas ═══ */}
+      <section>
+        <SectionHeader icon={<Search className="h-4 w-4" />} title="Onde Ganha e Onde Dói" />
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm"><TrendingUp className="h-4 w-4 text-emerald-600" /> Top 10 Maiores Ganhos (R$)</CardTitle>
-              <CardDescription>Cidades onde a proposta é mais barata que o pago</CardDescription>
+          <Card className="relative overflow-hidden">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-emerald-300" />
+            <CardHeader className="pb-2 pt-5">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+                  <TrendingUp className="h-4 w-4 text-emerald-600" />
+                </div>
+                Top 10 Maiores Ganhos
+              </CardTitle>
+              <CardDescription>Cidades onde a proposta é mais barata</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Cidade</TableHead>
-                    <TableHead>UF</TableHead>
-                    <TableHead className="text-right">Qtd</TableHead>
-                    <TableHead className="text-right">Ganho (R$)</TableHead>
-                    <TableHead className="text-right">% Dif</TableHead>
+                  <TableRow className="bg-muted/20">
+                    <TableHead className="font-semibold">Cidade</TableHead>
+                    <TableHead className="font-semibold">UF</TableHead>
+                    <TableHead className="text-right font-semibold">Qtd</TableHead>
+                    <TableHead className="text-right font-semibold">Ganho (R$)</TableHead>
+                    <TableHead className="text-right font-semibold">% Dif</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {cityRanking.topGains.map((c, i) => (
-                    <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => setDrillCity({ uf: c.uf, cidade: c.cidade })}>
-                      <TableCell className="text-xs">{c.cidade}</TableCell>
-                      <TableCell>{c.uf}</TableCell>
-                      <TableCell className="text-right">{c.qtd}</TableCell>
-                      <TableCell className="text-right font-semibold text-emerald-600">{formatBRL(c.dif)}</TableCell>
-                      <TableCell className="text-right text-emerald-600">{c.proposto > 0 ? `+${((c.dif / c.proposto) * 100).toFixed(1)}%` : "—"}</TableCell>
+                    <TableRow key={i} className="cursor-pointer transition-colors hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10" onClick={() => setDrillCity({ uf: c.uf, cidade: c.cidade })}>
+                      <TableCell className="text-xs font-medium">{c.cidade}</TableCell>
+                      <TableCell><Badge variant="outline" className="text-[10px]">{c.uf}</Badge></TableCell>
+                      <TableCell className="text-right tabular-nums">{c.qtd}</TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums text-emerald-600">{formatBRL(c.dif)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-emerald-600">{c.proposto > 0 ? `+${((c.dif / c.proposto) * 100).toFixed(1)}%` : "—"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -877,30 +890,36 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm"><TrendingDown className="h-4 w-4 text-destructive" /> Top 10 Maiores Perdas (R$)</CardTitle>
-              <CardDescription>Cidades onde a proposta é mais cara que o pago</CardDescription>
+          <Card className="relative overflow-hidden">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-red-500 to-red-300" />
+            <CardHeader className="pb-2 pt-5">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30">
+                  <TrendingDown className="h-4 w-4 text-destructive" />
+                </div>
+                Top 10 Maiores Perdas
+              </CardTitle>
+              <CardDescription>Cidades onde a proposta é mais cara</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Cidade</TableHead>
-                    <TableHead>UF</TableHead>
-                    <TableHead className="text-right">Qtd</TableHead>
-                    <TableHead className="text-right">Perda (R$)</TableHead>
-                    <TableHead className="text-right">% Dif</TableHead>
+                  <TableRow className="bg-muted/20">
+                    <TableHead className="font-semibold">Cidade</TableHead>
+                    <TableHead className="font-semibold">UF</TableHead>
+                    <TableHead className="text-right font-semibold">Qtd</TableHead>
+                    <TableHead className="text-right font-semibold">Perda (R$)</TableHead>
+                    <TableHead className="text-right font-semibold">% Dif</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {cityRanking.topLosses.map((c, i) => (
-                    <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => setDrillCity({ uf: c.uf, cidade: c.cidade })}>
-                      <TableCell className="text-xs">{c.cidade}</TableCell>
-                      <TableCell>{c.uf}</TableCell>
-                      <TableCell className="text-right">{c.qtd}</TableCell>
-                      <TableCell className="text-right font-semibold text-destructive">{formatBRL(c.dif)}</TableCell>
-                      <TableCell className="text-right text-destructive">{c.proposto > 0 ? `${((c.dif / c.proposto) * 100).toFixed(1)}%` : "—"}</TableCell>
+                    <TableRow key={i} className="cursor-pointer transition-colors hover:bg-red-50/50 dark:hover:bg-red-900/10" onClick={() => setDrillCity({ uf: c.uf, cidade: c.cidade })}>
+                      <TableCell className="text-xs font-medium">{c.cidade}</TableCell>
+                      <TableCell><Badge variant="outline" className="text-[10px]">{c.uf}</Badge></TableCell>
+                      <TableCell className="text-right tabular-nums">{c.qtd}</TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums text-destructive">{formatBRL(c.dif)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-destructive">{c.proposto > 0 ? `${((c.dif / c.proposto) * 100).toFixed(1)}%` : "—"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -908,23 +927,21 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
             </CardContent>
           </Card>
         </div>
-      </div>
+      </section>
 
-      {/* BLOCO 5 — Distribuição do Impacto */}
-      <div>
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          <Percent className="h-4 w-4" /> Distribuição do Impacto
-        </h2>
+      {/* ═══ BLOCO 5 — Distribuição do Impacto ═══ */}
+      <section>
+        <SectionHeader icon={<Percent className="h-4 w-4" />} title="Distribuição do Impacto" />
         <Card>
           <CardContent className="p-6">
             <div className="space-y-3">
               {variationDist.map((band, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <span className="w-28 text-right text-xs text-muted-foreground">{band.label}</span>
+                <div key={i} className="flex items-center gap-4">
+                  <span className="w-28 text-right text-xs font-medium text-muted-foreground">{band.label}</span>
                   <div className="flex-1">
-                    <div className="relative h-7 overflow-hidden rounded bg-muted">
-                      <div className={`absolute inset-y-0 left-0 rounded ${band.color} transition-all`} style={{ width: `${Math.max(band.pct, 0.5)}%` }} />
-                      <div className="absolute inset-0 flex items-center px-2">
+                    <div className="relative h-8 overflow-hidden rounded-lg bg-muted/50">
+                      <div className={`absolute inset-y-0 left-0 rounded-lg ${band.color} transition-all duration-500`} style={{ width: `${Math.max(band.pct, 0.5)}%` }} />
+                      <div className="absolute inset-0 flex items-center px-3">
                         <span className="text-xs font-semibold text-foreground drop-shadow-sm">
                           {band.count.toLocaleString("pt-BR")} ({band.pct.toFixed(1)}%)
                         </span>
@@ -934,26 +951,29 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Variação = (Pago − Proposta) / Proposta. Positivo = proposta mais barata. Negativo = proposta mais cara.
+            <p className="mt-4 rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              💡 Variação = (Pago − Proposta) / Proposta. Positivo = proposta mais barata. Negativo = proposta mais cara.
             </p>
           </CardContent>
         </Card>
-      </div>
+      </section>
 
-      {/* BLOCO 6 — Drill-down Dialog */}
+      {/* ═══ BLOCO 6 — Drill-down Dialog ═══ */}
       <Dialog open={!!drillCity} onOpenChange={(o) => { if (!o) { setDrillCity(null); setDrillRow(null); } }}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-auto">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <MapPin className="h-5 w-5 text-primary" />
               {drillCity?.cidade} / {drillCity?.uf} — {drillData.length} NFs
             </DialogTitle>
           </DialogHeader>
 
           {drillRow ? (
             <div className="space-y-4">
-              <Button variant="ghost" size="sm" onClick={() => setDrillRow(null)}>← Voltar à lista</Button>
-              <h3 className="font-semibold">Breakdown do Cálculo</h3>
+              <Button variant="ghost" size="sm" onClick={() => setDrillRow(null)} className="gap-1">← Voltar à lista</Button>
+              <h3 className="flex items-center gap-2 font-semibold">
+                <BarChart3 className="h-4 w-4 text-primary" /> Breakdown do Cálculo
+              </h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 {[
                   ["Frete Base Peso", drillRow.frete_base_peso],
@@ -972,19 +992,19 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                   ["TRT", drillRow.trt_calc],
                   ["Frete Final", drillRow.frete_final],
                 ].map(([label, val]) => (
-                  <div key={label as string} className="flex justify-between rounded bg-muted/50 px-3 py-1.5">
+                  <div key={label as string} className="flex justify-between rounded-lg bg-muted/50 px-3 py-2">
                     <span className="text-muted-foreground">{label as string}</span>
-                    <span className="font-mono font-semibold">{formatBRL(val as number)}</span>
+                    <span className="font-mono font-semibold tabular-nums">{formatBRL(val as number)}</span>
                   </div>
                 ))}
               </div>
-              <div className="flex justify-between rounded border p-3">
-                <span>Valor Cobrado</span>
-                <span className="font-bold">{formatBRL(drillRow.valor_cobrado)}</span>
+              <div className="flex justify-between rounded-lg border p-3">
+                <span className="font-medium">Valor Cobrado</span>
+                <span className="font-bold tabular-nums">{formatBRL(drillRow.valor_cobrado)}</span>
               </div>
-              <div className={`flex justify-between rounded border p-3 ${difBg((drillRow.valor_cobrado ?? 0) - (drillRow.frete_final ?? 0))}`}>
-                <span>Diferença</span>
-                <span className={`font-bold ${difColor((drillRow.valor_cobrado ?? 0) - (drillRow.frete_final ?? 0))}`}>
+              <div className={`flex justify-between rounded-lg border p-3 ${difBg((drillRow.valor_cobrado ?? 0) - (drillRow.frete_final ?? 0))}`}>
+                <span className="font-medium">Diferença</span>
+                <span className={`font-bold tabular-nums ${difColor((drillRow.valor_cobrado ?? 0) - (drillRow.frete_final ?? 0))}`}>
                   {formatBRL((drillRow.valor_cobrado ?? 0) - (drillRow.frete_final ?? 0))}
                 </span>
               </div>
@@ -993,13 +1013,13 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
             <div className="max-h-[60vh] overflow-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">Peso</TableHead>
-                    <TableHead className="text-right">Valor NF</TableHead>
-                    <TableHead className="text-right">Pago</TableHead>
-                    <TableHead className="text-right">Proposta</TableHead>
-                    <TableHead className="text-right">Dif (R$)</TableHead>
-                    <TableHead className="text-right">% Dif</TableHead>
+                  <TableRow className="bg-muted/30">
+                    <TableHead className="text-right font-semibold">Peso</TableHead>
+                    <TableHead className="text-right font-semibold">Valor NF</TableHead>
+                    <TableHead className="text-right font-semibold">Pago</TableHead>
+                    <TableHead className="text-right font-semibold">Proposta</TableHead>
+                    <TableHead className="text-right font-semibold">Dif (R$)</TableHead>
+                    <TableHead className="text-right font-semibold">% Dif</TableHead>
                     <TableHead />
                   </TableRow>
                 </TableHeader>
@@ -1009,14 +1029,14 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                     const p = (r.frete_final ?? 0) > 0 ? (d / (r.frete_final ?? 1)) * 100 : 0;
                     return (
                       <TableRow key={i}>
-                        <TableCell className="text-right">{formatNumber(r.shipment_peso, 1)}</TableCell>
-                        <TableCell className="text-right">{formatBRL(r.shipment_valor_nf)}</TableCell>
-                        <TableCell className="text-right">{formatBRL(r.valor_cobrado)}</TableCell>
-                        <TableCell className="text-right">{formatBRL(r.frete_final)}</TableCell>
-                        <TableCell className={`text-right font-semibold ${difColor(d)}`}>{formatBRL(d)}</TableCell>
-                        <TableCell className={`text-right ${difColor(d)}`}>{p >= 0 ? "+" : ""}{p.toFixed(1)}%</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatNumber(r.shipment_peso, 1)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatBRL(r.shipment_valor_nf)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatBRL(r.valor_cobrado)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatBRL(r.frete_final)}</TableCell>
+                        <TableCell className={`text-right font-semibold tabular-nums ${difColor(d)}`}>{formatBRL(d)}</TableCell>
+                        <TableCell className={`text-right tabular-nums ${difColor(d)}`}>{p >= 0 ? "+" : ""}{p.toFixed(1)}%</TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="sm" onClick={() => setDrillRow(r)}>Ver cálculo</Button>
+                          <Button variant="ghost" size="sm" className="text-primary" onClick={() => setDrillRow(r)}>Ver cálculo</Button>
                         </TableCell>
                       </TableRow>
                     );
@@ -1034,16 +1054,37 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
 
 // === Subcomponents ===
 
-function MetricCard({ label, value, sub, color, icon }: { label: string; value: string; sub?: string; color?: string; icon?: React.ReactNode }) {
+function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
-    <Card>
-      <CardContent className="flex flex-col items-center justify-center p-4">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <div className={`mt-1 flex items-center gap-1 ${color ?? ""}`}>
-          {icon}
-          <p className="text-lg font-bold">{value}</p>
+    <div className="mb-4 flex items-center gap-2">
+      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        {icon}
+      </div>
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-foreground">{title}</h2>
+      <div className="ml-2 h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+function HeroCard({ label, value, sublabel, valueColor, iconBg, icon, highlight }: {
+  label: string; value: string; sublabel?: string; valueColor?: string;
+  iconBg?: string; icon?: React.ReactNode; highlight?: boolean;
+}) {
+  return (
+    <Card className={`relative overflow-hidden transition-shadow hover:shadow-md ${highlight ? "ring-1 ring-primary/20" : ""}`}>
+      {highlight && <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary to-accent" />}
+      <div className="absolute inset-0 bg-gradient-to-br from-transparent to-muted/20" />
+      <CardContent className="relative flex items-start gap-3 p-5">
+        {icon && (
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconBg ?? "bg-muted"}`}>
+            {icon}
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+          <p className={`mt-1 text-xl font-bold tabular-nums leading-tight ${valueColor ?? ""}`}>{value}</p>
+          {sublabel && <p className={`mt-0.5 text-xs ${valueColor ?? "text-muted-foreground"}`}>{sublabel}</p>}
         </div>
-        {sub && <p className={`text-xs ${color ?? "text-muted-foreground"}`}>{sub}</p>}
       </CardContent>
     </Card>
   );
