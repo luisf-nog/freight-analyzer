@@ -130,6 +130,70 @@ export type Database = {
           },
         ]
       }
+      deadlines_proposed: {
+        Row: {
+          cidade_corrigida: string
+          id: string
+          prazo_dias: number
+          study_id: string
+          uf: string
+        }
+        Insert: {
+          cidade_corrigida: string
+          id?: string
+          prazo_dias: number
+          study_id: string
+          uf: string
+        }
+        Update: {
+          cidade_corrigida?: string
+          id?: string
+          prazo_dias?: number
+          study_id?: string
+          uf?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deadlines_proposed_study_id_fkey"
+            columns: ["study_id"]
+            isOneToOne: false
+            referencedRelation: "studies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deadlines_realized: {
+        Row: {
+          cidade_corrigida: string
+          id: string
+          prazo_dias: number
+          study_id: string
+          uf: string
+        }
+        Insert: {
+          cidade_corrigida: string
+          id?: string
+          prazo_dias: number
+          study_id: string
+          uf: string
+        }
+        Update: {
+          cidade_corrigida?: string
+          id?: string
+          prazo_dias?: number
+          study_id?: string
+          uf?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deadlines_realized_study_id_fkey"
+            columns: ["study_id"]
+            isOneToOne: false
+            referencedRelation: "studies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       icms_uf: {
         Row: {
           aliquota: number

@@ -11,7 +11,7 @@ import { formatBRL, formatNumber } from "@/lib/csv-utils";
 import {
   Download, TrendingUp, TrendingDown, ChevronDown, ChevronRight,
   AlertTriangle, CheckCircle2, ShieldAlert, BarChart3, Search,
-  DollarSign, Scale, Percent, FileText, ArrowUpDown,
+  DollarSign, Scale, Percent, FileText, ArrowUpDown, Clock,
 } from "lucide-react";
 
 // === Constants ===
@@ -131,18 +131,22 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   const [drillRow, setDrillRow] = useState<SimRow | null>(null);
   const [sortCol, setSortCol] = useState<string>("diferenca");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [deadlinesRealized, setDeadlinesRealized] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
+  const [deadlinesProposed, setDeadlinesProposed] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
 
   useEffect(() => {
     if (simulationCount === 0) { setLoading(false); return; }
     const load = async () => {
       setLoading(true);
-      const [sims, shipments] = await Promise.all([
+      const [sims, shipments, realized, proposed] = await Promise.all([
         fetchAll("simulations",
           "match_status, valor_cobrado, frete_final, diferenca_valor, pct_dif, reais_kg_hj, reais_kg_proposta, frete_base_peso, adv, sec_tas, pedagio, gris, sefaz, emex, tda, tso, tx_redespacho, frete_peso, adm_rodo_tax, frete_c_icms, trt_calc, errors, shipment_row_id",
           { study_id: studyId }),
         fetchAll("shipments_paid",
           "id, uf, cidade_corrigida, peso, valor_nf, data",
           { study_id: studyId }),
+        supabase.from("deadlines_realized").select("uf, cidade_corrigida, prazo_dias").eq("study_id", studyId).then(r => r.data ?? []),
+        supabase.from("deadlines_proposed").select("uf, cidade_corrigida, prazo_dias").eq("study_id", studyId).then(r => r.data ?? []),
       ]);
       const shipMap = new Map<string, { uf: string; cidade: string; peso: number; valor_nf: number; data: string | null }>();
       for (const s of shipments) shipMap.set(s.id, { uf: s.uf, cidade: s.cidade_corrigida, peso: s.peso, valor_nf: s.valor_nf, data: s.data });
@@ -151,6 +155,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
         return { ...sim, shipment_uf: ship?.uf ?? "", shipment_cidade: ship?.cidade ?? "", shipment_peso: ship?.peso ?? 0, shipment_valor_nf: ship?.valor_nf ?? 0, shipment_data: ship?.data ?? null };
       });
       setRows(merged);
+      setDeadlinesRealized(realized as any);
+      setDeadlinesProposed(proposed as any);
       setLoading(false);
     };
     load();
@@ -346,7 +352,31 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     }).filter(b => b.qtd > 0);
   }, [filtered]);
 
-  const exportCSV = () => {
+  // Deadline pivot: cross-reference realized vs proposed
+  const deadlinePivot = useMemo(() => {
+    if (deadlinesRealized.length === 0 && deadlinesProposed.length === 0) return [];
+    const realizedMap = new Map<string, number>();
+    for (const d of deadlinesRealized) realizedMap.set(`${d.uf}|${d.cidade_corrigida}`, d.prazo_dias);
+    const proposedMap = new Map<string, number>();
+    for (const d of deadlinesProposed) proposedMap.set(`${d.uf}|${d.cidade_corrigida}`, d.prazo_dias);
+
+    const allKeys = new Set([...realizedMap.keys(), ...proposedMap.keys()]);
+    const result: Array<{ uf: string; cidade: string; realizado: number | null; proposto: number | null; dif: number | null }> = [];
+    for (const key of allKeys) {
+      const [uf, cidade] = key.split("|");
+      const realizado = realizedMap.get(key) ?? null;
+      const proposto = proposedMap.get(key) ?? null;
+      const dif = realizado !== null && proposto !== null ? realizado - proposto : null;
+      result.push({ uf, cidade, realizado, proposto, dif });
+    }
+    result.sort((a, b) => {
+      if (a.uf !== b.uf) return a.uf.localeCompare(b.uf);
+      return a.cidade.localeCompare(b.cidade);
+    });
+    return result;
+  }, [deadlinesRealized, deadlinesProposed]);
+
+
     const lines = ["UF;Região Macro;Capital/Interior;Qtd NF;Valor Cobrado;Valor Proposta;Diferença;% Dif;R$/kg Hoje;R$/kg Proposta;Peso Médio;Win Rate"];
     for (const uf of ufPivot) {
       const sub = getUFSubRows(uf.uf);
@@ -679,7 +709,59 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
         </Tabs>
       </div>
 
-      {/* BLOCO 4 — Top Ganhos / Perdas */}
+      {/* BLOCO Prazos */}
+      {deadlinePivot.length > 0 && (
+        <div>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            <Clock className="h-4 w-4" /> Comparativo de Prazos
+          </h2>
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>UF</TableHead>
+                      <TableHead>Cidade</TableHead>
+                      <TableHead className="text-right">Realizado (dias)</TableHead>
+                      <TableHead className="text-right">Proposto (dias)</TableHead>
+                      <TableHead className="text-right">Diferença</TableHead>
+                      <TableHead className="text-right">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {deadlinePivot.map((d, i) => {
+                      const difColor2 = d.dif !== null ? (d.dif > 0 ? "text-destructive" : d.dif < 0 ? "text-emerald-600" : "text-muted-foreground") : "text-muted-foreground";
+                      return (
+                        <TableRow key={i}>
+                          <TableCell className="font-semibold">{d.uf}</TableCell>
+                          <TableCell>{d.cidade}</TableCell>
+                          <TableCell className="text-right">{d.realizado !== null ? d.realizado.toFixed(1) : "—"}</TableCell>
+                          <TableCell className="text-right">{d.proposto !== null ? d.proposto.toFixed(1) : "—"}</TableCell>
+                          <TableCell className={`text-right font-bold ${difColor2}`}>
+                            {d.dif !== null ? `${d.dif > 0 ? "+" : ""}${d.dif.toFixed(1)}` : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {d.dif === null ? (
+                              <Badge variant="secondary" className="text-[10px]">Sem dados</Badge>
+                            ) : d.dif < 0 ? (
+                              <Badge className="text-[10px] bg-emerald-600">Mais rápido</Badge>
+                            ) : d.dif > 0 ? (
+                              <Badge variant="destructive" className="text-[10px]">Mais lento</Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-[10px]">Igual</Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
       <div>
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           <Search className="h-4 w-4" /> Onde Ganha e Onde Dói

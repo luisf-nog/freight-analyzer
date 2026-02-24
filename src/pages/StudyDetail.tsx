@@ -7,6 +7,7 @@ import { ArrowLeft, Package } from "lucide-react";
 import { CarrierRateImport } from "@/components/imports/CarrierRateImport";
 import { ShipmentImport } from "@/components/imports/ShipmentImport";
 import { IcmsEditor } from "@/components/imports/IcmsEditor";
+import { DeadlineImport } from "@/components/imports/DeadlineImport";
 import { MatchQuality } from "@/components/imports/MatchQuality";
 import { RunSimulation } from "@/components/simulation/RunSimulation";
 import { AnalysisDashboard } from "@/components/analysis/AnalysisDashboard";
@@ -102,6 +103,10 @@ const StudyDetail = () => {
             <div className="grid gap-4 lg:grid-cols-2">
               <CarrierRateImport studyId={study.id} rateCount={rateCount} onImported={fetchCounts} />
               <ShipmentImport studyId={study.id} shipmentCount={shipmentCount} onImported={fetchCounts} />
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <DeadlineImport studyId={study.id} table="deadlines_realized" title="Prazo Realizado (Histórico)" onImported={fetchCounts} />
+              <DeadlineImport studyId={study.id} table="deadlines_proposed" title="Prazo Proposto (Transportadora)" onImported={fetchCounts} />
             </div>
             <IcmsEditor />
           </TabsContent>

@@ -428,3 +428,100 @@ export function generateShipmentTemplate(): string {
   const example = ["15000,00", "250,5", "SAO PAULO", "SP", "15/01/2024", "1250,00"];
   return headers.join(";") + "\n" + example.join(";");
 }
+
+/** Generate deadline CSV template */
+export function generateDeadlineTemplate(): string {
+  const headers = ["UF", "Cidade", "Prazo"];
+  const examples = [
+    ["SP", "SAO PAULO", "3"],
+    ["RJ", "RIO DE JANEIRO", "4"],
+    ["MG", "BELO HORIZONTE", "5"],
+  ];
+  return headers.join(";") + "\n" + examples.map(e => e.join(";")).join("\n");
+}
+
+/** Parse deadline CSV/XLSX — simple UF, Cidade, Prazo format. Averages multiple entries per city. */
+export function parseDeadlineCSV(input: string | string[][]): ParseResult<Record<string, unknown>> {
+  const rows = typeof input === "string" ? parseCSVText(input) : input;
+  if (rows.length < 2) return { data: [], errors: [], totalRows: 0, duplicates: 0, duplicateDetails: [], missingColumns: [] };
+
+  const headers = rows[0].map(h => normalizeHeader(h));
+
+  // Find column indices
+  const DEADLINE_MAP: Record<string, string> = {
+    uf: "uf",
+    estado: "uf",
+    states: "uf",
+    state: "uf",
+    cidade: "cidade_corrigida",
+    city: "cidade_corrigida",
+    cidade_corrigida: "cidade_corrigida",
+    prazo: "prazo_dias",
+    prazo_dias: "prazo_dias",
+    dias: "prazo_dias",
+    lead_time: "prazo_dias",
+    sla: "prazo_dias",
+  };
+
+  const columnMapping: Array<{ csvIndex: number; dbColumn: string }> = [];
+  const mappedDbCols = new Set<string>();
+
+  headers.forEach((h, i) => {
+    const dbCol = DEADLINE_MAP[h];
+    if (dbCol && !mappedDbCols.has(dbCol)) {
+      columnMapping.push({ csvIndex: i, dbColumn: dbCol });
+      mappedDbCols.add(dbCol);
+    }
+  });
+
+  const requiredCols = ["uf", "cidade_corrigida", "prazo_dias"];
+  const missingColumns = requiredCols.filter(c => !mappedDbCols.has(c));
+
+  const errors: ParseError[] = [];
+  // Accumulate for averaging
+  const cityMap = new Map<string, { uf: string; cidade: string; total: number; count: number }>();
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (row.every(c => !c.trim())) continue;
+
+    let uf = "";
+    let cidade = "";
+    let prazo: number | null = null;
+
+    for (const { csvIndex, dbColumn } of columnMapping) {
+      const rawVal = row[csvIndex] ?? "";
+      if (dbColumn === "uf") uf = normalizeUF(rawVal);
+      else if (dbColumn === "cidade_corrigida") cidade = normalizeCity(rawVal);
+      else if (dbColumn === "prazo_dias") {
+        prazo = parseBrazilianNumber(rawVal);
+        if (prazo === null && rawVal.trim() !== "") {
+          errors.push({ row: r + 1, column: "prazo_dias", value: rawVal, message: "Valor numérico inválido" });
+        }
+      }
+    }
+
+    if (!uf || !cidade || prazo === null) continue;
+
+    const key = `${uf}|${cidade}`;
+    const existing = cityMap.get(key);
+    if (existing) {
+      existing.total += prazo;
+      existing.count++;
+    } else {
+      cityMap.set(key, { uf, cidade, total: prazo, count: 1 });
+    }
+  }
+
+  const data: Record<string, unknown>[] = [];
+  const duplicates = rows.length - 1 - cityMap.size - errors.length;
+  for (const [, v] of cityMap) {
+    data.push({
+      uf: v.uf,
+      cidade_corrigida: v.cidade,
+      prazo_dias: Math.round((v.total / v.count) * 10) / 10, // 1 decimal
+    });
+  }
+
+  return { data, errors, totalRows: rows.length - 1, duplicates: duplicates > 0 ? duplicates : 0, duplicateDetails: [], missingColumns };
+}
