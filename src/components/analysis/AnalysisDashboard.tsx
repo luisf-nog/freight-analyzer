@@ -12,8 +12,13 @@ import {
   Download, TrendingUp, TrendingDown, ChevronDown, ChevronRight,
   AlertTriangle, CheckCircle2, ShieldAlert, BarChart3, Search,
   DollarSign, Scale, Percent, FileText, ArrowUpDown, Clock,
-  MapPin, Weight, Target,
+  MapPin, Weight, Target, Activity,
 } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+  Legend, ResponsiveContainer, LineChart, Line, ComposedChart, Area,
+  ScatterChart, Scatter, ZAxis, Cell,
+} from "recharts";
 
 // === Constants ===
 
@@ -259,6 +264,53 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     const set = new Set(rows.filter(r => r.match_status !== "NOT_FOUND").map(r => r.shipment_uf));
     return Array.from(set).sort();
   }, [rows]);
+
+  // Chart data: bar chart cobrado vs proposto by UF
+  const ufChartData = useMemo(() => {
+    return ufPivot.map(uf => ({
+      uf: uf.uf,
+      cobrado: Math.round(uf.cobrado),
+      proposto: Math.round(uf.proposto),
+      diferenca: Math.round(uf.dif),
+      pctDif: uf.proposto > 0 ? ((uf.dif / uf.proposto) * 100) : 0,
+    })).sort((a, b) => b.cobrado - a.cobrado);
+  }, [ufPivot]);
+
+  // Pareto data: cumulative concentration by city
+  const paretoData = useMemo(() => {
+    const cityMap = new Map<string, { label: string; cobrado: number }>();
+    for (const r of filtered) {
+      const key = `${r.shipment_cidade}/${r.shipment_uf}`;
+      const agg = cityMap.get(key) ?? { label: key, cobrado: 0 };
+      agg.cobrado += r.valor_cobrado ?? 0;
+      cityMap.set(key, agg);
+    }
+    const sorted = Array.from(cityMap.values()).sort((a, b) => b.cobrado - a.cobrado);
+    const grandTotal = sorted.reduce((s, c) => s + c.cobrado, 0);
+    let cumulative = 0;
+    return sorted.slice(0, 30).map((c, i) => {
+      cumulative += c.cobrado;
+      return {
+        cidade: c.label,
+        cobrado: Math.round(c.cobrado),
+        pctAcumulado: grandTotal > 0 ? (cumulative / grandTotal) * 100 : 0,
+        rank: i + 1,
+      };
+    });
+  }, [filtered]);
+
+  // Scatter data: peso vs frete por embarque (sample up to 500)
+  const scatterData = useMemo(() => {
+    const sampled = filtered.length > 500
+      ? filtered.filter((_, i) => i % Math.ceil(filtered.length / 500) === 0)
+      : filtered;
+    return sampled.map(r => ({
+      peso: r.shipment_peso,
+      cobrado: r.valor_cobrado ?? 0,
+      proposta: r.frete_final ?? 0,
+      dif: (r.valor_cobrado ?? 0) - (r.frete_final ?? 0),
+    }));
+  }, [filtered]);
 
   const toggleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -958,7 +1010,143 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
         </Card>
       </section>
 
-      {/* ═══ BLOCO 6 — Drill-down Dialog ═══ */}
+      {/* ═══ BLOCO 6 — Gráficos Visuais ═══ */}
+      <section>
+        <SectionHeader icon={<BarChart3 className="h-4 w-4" />} title="Visão Gráfica" />
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Bar Chart: Cobrado vs Proposto por UF */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Pago vs Proposta por UF</CardTitle>
+              <CardDescription>Comparativo de valores em R$ por estado</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[350px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={ufChartData} margin={{ top: 5, right: 10, left: 10, bottom: 60 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="uf" tick={{ fontSize: 11 }} angle={-45} textAnchor="end" interval={0} />
+                    <YAxis tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
+                    <RechartsTooltip
+                      formatter={(value: number) => formatBRL(value)}
+                      labelFormatter={(label: string) => `UF: ${label}`}
+                      contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="cobrado" name="Pago" fill="hsl(var(--muted-foreground))" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="proposto" name="Proposta" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Scatter: Peso vs Frete */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Peso × Frete por Embarque</CardTitle>
+              <CardDescription>Cada ponto é um embarque — verde = economia, vermelho = perda</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[350px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="peso" name="Peso (kg)" tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${v}kg`} />
+                    <YAxis dataKey="cobrado" name="Pago (R$)" tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                    <ZAxis dataKey="dif" range={[20, 80]} />
+                    <RechartsTooltip
+                      contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }}
+                      formatter={(value: number, name: string) => [formatBRL(value), name === "cobrado" ? "Pago" : name === "proposta" ? "Proposta" : name]}
+                    />
+                    <Scatter name="Embarques" data={scatterData}>
+                      {scatterData.map((entry, index) => (
+                        <Cell key={index} fill={entry.dif > 0 ? "hsl(142, 71%, 45%)" : "hsl(0, 84%, 60%)"} fillOpacity={0.6} />
+                      ))}
+                    </Scatter>
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Weight band comparison chart */}
+        <Card className="mt-4">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Diferença por Faixa de Peso</CardTitle>
+            <CardDescription>Economia ou perda em R$ por faixa — verde = economia, vermelho = perda</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={weightPivot.map(b => ({ ...b, dif: Math.round(b.dif) }))} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
+                  <RechartsTooltip
+                    formatter={(value: number) => formatBRL(value)}
+                    contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }}
+                  />
+                  <Bar dataKey="dif" name="Diferença (R$)" radius={[4, 4, 0, 0]}>
+                    {weightPivot.map((entry, index) => (
+                      <Cell key={index} fill={entry.dif > 0 ? "hsl(142, 71%, 45%)" : "hsl(0, 84%, 60%)"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ═══ BLOCO 7 — Pareto / Concentração ═══ */}
+      <section>
+        <SectionHeader icon={<Activity className="h-4 w-4" />} title="Análise de Concentração (Pareto)" />
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Curva 80/20 — Gasto Acumulado por Cidade</CardTitle>
+            <CardDescription>
+              Top 30 cidades por valor pago, com % acumulado do gasto total.
+              {paretoData.length > 0 && (() => {
+                const idx80 = paretoData.findIndex(d => d.pctAcumulado >= 80);
+                return idx80 >= 0
+                  ? ` → ${idx80 + 1} cidades concentram 80% do gasto.`
+                  : "";
+              })()}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[400px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={paretoData} margin={{ top: 5, right: 30, left: 10, bottom: 80 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="cidade" tick={{ fontSize: 9 }} angle={-55} textAnchor="end" interval={0} />
+                  <YAxis yAxisId="left" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
+                  <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} tick={{ fontSize: 11 }} />
+                  <RechartsTooltip
+                    contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }}
+                    formatter={(value: number, name: string) => {
+                      if (name === "% Acumulado") return [`${(value as number).toFixed(1)}%`, name];
+                      return [formatBRL(value), name];
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar yAxisId="left" dataKey="cobrado" name="Valor Pago" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} fillOpacity={0.8} />
+                  <Line yAxisId="right" dataKey="pctAcumulado" name="% Acumulado" stroke="hsl(0, 84%, 60%)" strokeWidth={2.5} dot={{ r: 3 }} />
+                  {/* 80% reference line */}
+                  <Area yAxisId="right" dataKey={() => 80} name="" fill="none" stroke="hsl(var(--muted-foreground))" strokeDasharray="6 3" strokeWidth={1} dot={false} activeDot={false} legendType="none" />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="mt-3 rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              📊 A regra de Pareto indica que ~20% das cidades/rotas concentram ~80% do custo de frete. Focar negociação nessas rotas gera maior impacto.
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ═══ BLOCO 8 — Drill-down Dialog ═══ */}
       <Dialog open={!!drillCity} onOpenChange={(o) => { if (!o) { setDrillCity(null); setDrillRow(null); } }}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-auto">
           <DialogHeader>
