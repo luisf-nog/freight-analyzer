@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Upload, Download, Trash2, CheckCircle2, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { parseShipmentCSV, generateShipmentTemplate, type ParseResult } from "@/lib/csv-utils";
+import { parseShipmentCSV, readFileAsRows, generateShipmentTemplate, type ParseResult } from "@/lib/csv-utils";
 import { toast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -26,8 +26,8 @@ export function ShipmentImport({ studyId, shipmentCount, onImported }: Props) {
     if (!file) return;
     setParsing(true);
     try {
-      const text = await file.text();
-      const parsed = parseShipmentCSV(text);
+      const rows = await readFileAsRows(file);
+      const parsed = parseShipmentCSV(rows);
       setResult(parsed);
       if (parsed.missingColumns.length > 0) {
         toast({ title: "Colunas obrigatórias faltando", description: parsed.missingColumns.join(", "), variant: "destructive" });
@@ -97,7 +97,7 @@ export function ShipmentImport({ studyId, shipmentCount, onImported }: Props) {
       <CardContent className="space-y-3">
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1" onClick={() => fileRef.current?.click()} disabled={parsing}>
-            <Upload className="h-4 w-4" /> {parsing ? "Lendo..." : "Importar CSV"}
+            <Upload className="h-4 w-4" /> {parsing ? "Lendo..." : "Importar CSV/XLSX"}
           </Button>
           <Button variant="ghost" size="sm" className="gap-1" onClick={downloadTemplate}>
             <Download className="h-4 w-4" /> Template
@@ -108,7 +108,7 @@ export function ShipmentImport({ studyId, shipmentCount, onImported }: Props) {
             </Button>
           )}
         </div>
-        <input ref={fileRef} type="file" accept=".csv,.txt,.tsv" className="hidden" onChange={handleFile} />
+        <input ref={fileRef} type="file" accept=".csv,.txt,.tsv,.xlsx,.xls" className="hidden" onChange={handleFile} />
 
         {result && (
           <div className="space-y-2">
