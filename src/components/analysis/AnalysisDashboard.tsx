@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, Fragment } from "react";
+import { useEffect, useState, useMemo, Fragment } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,8 @@ import { formatBRL, formatNumber } from "@/lib/csv-utils";
 import {
   Download, TrendingUp, TrendingDown, ChevronDown, ChevronRight,
   AlertTriangle, CheckCircle2, ShieldAlert, BarChart3, Search,
-  DollarSign, Scale, Percent, FileText, ArrowUpDown, Sparkles,
+  DollarSign, Scale, Percent, FileText, ArrowUpDown,
 } from "lucide-react";
-import { AiSummary } from "./AiSummary";
 
 // === Constants ===
 
@@ -332,56 +331,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     }
     return Array.from(map.values()).sort((a, b) => b.dif - a.dif);
   }, [filtered]);
-
-  // Build payload for AI summary
-  const buildAiPayload = useCallback(() => {
-    const weightBandAnalysis = WEIGHT_BANDS.map(band => {
-      const bandRows = filtered.filter(r => r.shipment_peso > band.min && r.shipment_peso <= band.max);
-      const cobrado = bandRows.reduce((s, r) => s + (r.valor_cobrado ?? 0), 0);
-      const proposto = bandRows.reduce((s, r) => s + (r.frete_final ?? 0), 0);
-      return { faixa: band.label, qtd: bandRows.length, cobrado: +cobrado.toFixed(2), proposto: +proposto.toFixed(2), diferenca: +(cobrado - proposto).toFixed(2) };
-    }).filter(b => b.qtd > 0);
-
-    const worseOver10 = filtered.filter(r => {
-      const prop = r.frete_final ?? 0;
-      const cob = r.valor_cobrado ?? 0;
-      return prop > 0 && ((cob - prop) / prop) < -0.10;
-    }).length;
-    const pctWorseOver10 = filtered.length > 0 ? (worseOver10 / filtered.length) * 100 : 0;
-
-    const ufLosses = ufPivot.filter(u => u.dif < 0).sort((a, b) => a.dif - b.dif);
-    const totalLoss = ufLosses.reduce((s, u) => s + Math.abs(u.dif), 0);
-    const topLossConcentration = ufLosses.length > 0 && totalLoss > 0
-      ? { uf: ufLosses[0].uf, pct_do_total_perda: +((Math.abs(ufLosses[0].dif) / totalLoss) * 100).toFixed(1) }
-      : null;
-
-    return {
-      total_pago: +stats.totalCobrado.toFixed(2),
-      total_proposto: +stats.totalProposto.toFixed(2),
-      diferenca_total: +stats.totalDif.toFixed(2),
-      percentual_diferenca: +stats.pctDifGeral.toFixed(2),
-      economia_media_por_nf: +stats.econMediaNF.toFixed(2),
-      r_kg_pago: +stats.rkgPago.toFixed(2),
-      r_kg_proposto: +stats.rkgProposta.toFixed(2),
-      qtd_nf: stats.qtdNF,
-      percentual_match: +stats.matchPct.toFixed(1),
-      not_found_count: stats.notFoundCount,
-      not_found_percentual: +stats.notFoundPct.toFixed(1),
-      impacto_not_found_valor: +stats.notFoundValue.toFixed(2),
-      missing_icms_count: stats.missingIcmsCount,
-      missing_icms_percentual: +stats.missingIcmsPct.toFixed(1),
-      impacto_missing_icms_valor: +stats.missingIcmsValue.toFixed(2),
-      top_ganhos_estados: ufPivot.filter(u => u.dif > 0).sort((a, b) => b.dif - a.dif).slice(0, 5).map(u => ({ uf: u.uf, valor: +u.dif.toFixed(2), qtd: u.qtd })),
-      top_perdas_estados: ufLosses.slice(0, 5).map(u => ({ uf: u.uf, valor: +u.dif.toFixed(2), qtd: u.qtd })),
-      top_ganhos_cidades: cityRanking.topGains.slice(0, 5).map(c => ({ cidade: c.cidade, uf: c.uf, valor: +c.dif.toFixed(2) })),
-      top_perdas_cidades: cityRanking.topLosses.slice(0, 5).map(c => ({ cidade: c.cidade, uf: c.uf, valor: +c.dif.toFixed(2) })),
-      analise_faixa_peso: weightBandAnalysis,
-      distribuicao_variacao: variationDist.map(v => ({ faixa: v.label, qtd: v.count, pct: +v.pct.toFixed(1) })),
-      pct_nfs_pioram_mais_10pct: +pctWorseOver10.toFixed(1),
-      concentracao_perda_top_uf: topLossConcentration,
-      macro_regioes: macroPivot.map(m => ({ regiao: m.regiao, qtd: m.qtd, cobrado: +m.cobrado.toFixed(2), proposto: +m.proposto.toFixed(2), diferenca: +m.dif.toFixed(2) })),
-    };
-  }, [stats, ufPivot, cityRanking, variationDist, macroPivot, filtered]);
 
   const exportCSV = () => {
     const lines = ["UF;Região Macro;Capital/Interior;Qtd NF;Valor Cobrado;Valor Proposta;Diferença;% Dif;R$/kg Hoje;R$/kg Proposta;Peso Médio;Win Rate"];
@@ -766,14 +715,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
             </p>
           </CardContent>
         </Card>
-      </div>
-
-      {/* BLOCO 6 — Resumo por IA */}
-      <div>
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          <Sparkles className="h-4 w-4" /> Resumo Inteligente
-        </h2>
-        <AiSummary buildPayload={buildAiPayload} disabled={filtered.length === 0} />
       </div>
 
       {/* BLOCO 6 — Drill-down Dialog */}
