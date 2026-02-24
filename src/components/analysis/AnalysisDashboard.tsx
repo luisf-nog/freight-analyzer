@@ -482,7 +482,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
           <TabsContent value="uf">
             <Card>
               <CardContent className="p-0">
-                <div className="max-h-[500px] overflow-auto">
+                <div className="overflow-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
