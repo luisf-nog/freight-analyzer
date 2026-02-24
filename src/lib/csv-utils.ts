@@ -31,6 +31,9 @@ export function parseBrazilianNumber(raw: string | number | null | undefined): n
   // Remove currency prefix
   str = str.replace(/^R\$\s*/i, "");
 
+  // Treat lone dash or empty as null (means "not applicable")
+  if (str === "-" || str === "–" || str === "—" || str === "") return null;
+
   // Remove percent suffix (convert to decimal later)
   const isPercent = str.endsWith("%");
   if (isPercent) str = str.slice(0, -1).trim();
