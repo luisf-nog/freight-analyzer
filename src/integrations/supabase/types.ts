@@ -214,6 +214,7 @@ export type Database = {
           match_status: string
           pct_dif: number | null
           pedagio: number | null
+          peso: number | null
           rate_row_id: string | null
           reais_kg_hj: number | null
           reais_kg_proposta: number | null
@@ -226,6 +227,7 @@ export type Database = {
           tso: number | null
           tx_redespacho: number | null
           valor_cobrado: number | null
+          valor_nf: number | null
         }
         Insert: {
           adm_rodo_tax?: number | null
@@ -242,6 +244,7 @@ export type Database = {
           match_status?: string
           pct_dif?: number | null
           pedagio?: number | null
+          peso?: number | null
           rate_row_id?: string | null
           reais_kg_hj?: number | null
           reais_kg_proposta?: number | null
@@ -254,6 +257,7 @@ export type Database = {
           tso?: number | null
           tx_redespacho?: number | null
           valor_cobrado?: number | null
+          valor_nf?: number | null
         }
         Update: {
           adm_rodo_tax?: number | null
@@ -270,6 +274,7 @@ export type Database = {
           match_status?: string
           pct_dif?: number | null
           pedagio?: number | null
+          peso?: number | null
           rate_row_id?: string | null
           reais_kg_hj?: number | null
           reais_kg_proposta?: number | null
@@ -282,6 +287,7 @@ export type Database = {
           tso?: number | null
           tx_redespacho?: number | null
           valor_cobrado?: number | null
+          valor_nf?: number | null
         }
         Relationships: [
           {

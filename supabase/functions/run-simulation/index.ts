@@ -5,17 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Brazilian state capitals for Capital/Interior classification
-const STATE_CAPITALS: Record<string, string> = {
-  AC: "RIO BRANCO", AL: "MACEIO", AM: "MANAUS", AP: "MACAPA",
-  BA: "SALVADOR", CE: "FORTALEZA", DF: "BRASILIA", ES: "VITORIA",
-  GO: "GOIANIA", MA: "SAO LUIS", MG: "BELO HORIZONTE", MS: "CAMPO GRANDE",
-  MT: "CUIABA", PA: "BELEM", PB: "JOAO PESSOA", PE: "RECIFE",
-  PI: "TERESINA", PR: "CURITIBA", RJ: "RIO DE JANEIRO", RN: "NATAL",
-  RO: "PORTO VELHO", RR: "BOA VISTA", RS: "PORTO ALEGRE",
-  SC: "FLORIANOPOLIS", SE: "ARACAJU", SP: "SAO PAULO", TO: "PALMAS",
-};
-
 interface CarrierRate {
   id: string;
   uf: string;
@@ -60,19 +49,38 @@ interface Shipment {
   valor_cobrado: number;
 }
 
+/**
+ * Determines freight base by weight band.
+ * When higher bands are null, excess starts from the last available band.
+ * e.g. if faixa_100/150/200 are all null, excess = faixa_70 + (peso-70)*rate
+ */
 function getFreteBasePeso(rate: CarrierRate, peso: number): number {
   if (peso <= 10) return rate.faixa_10 ?? 0;
-  if (peso <= 20) return rate.faixa_20 ?? 0;
-  if (peso <= 30) return rate.faixa_30 ?? 0;
-  if (peso <= 50) return rate.faixa_50 ?? 0;
-  if (peso <= 70) return rate.faixa_70 ?? 0;
-  if (peso <= 100) return rate.faixa_100 ?? rate.faixa_70 ?? 0;
-  if (peso <= 150) return rate.faixa_150 ?? rate.faixa_100 ?? rate.faixa_70 ?? 0;
-  if (peso <= 200) return rate.faixa_200 ?? rate.faixa_150 ?? rate.faixa_100 ?? rate.faixa_70 ?? 0;
-  // Excedente: faixa_200 + (peso - 200) * frete_kg_ex_200
-  const base200 = rate.faixa_200 ?? rate.faixa_150 ?? rate.faixa_100 ?? rate.faixa_70 ?? 0;
+  if (peso <= 20) return rate.faixa_20 ?? rate.faixa_10 ?? 0;
+  if (peso <= 30) return rate.faixa_30 ?? rate.faixa_20 ?? 0;
+  if (peso <= 50) return rate.faixa_50 ?? rate.faixa_30 ?? 0;
+  if (peso <= 70) return rate.faixa_70 ?? rate.faixa_50 ?? 0;
+
   const exRate = rate.frete_kg_ex_200 ?? 0;
-  return base200 + (peso - 200) * exRate;
+
+  // Determine the highest available band and apply excess from there
+  if (rate.faixa_200 != null && peso <= 200) return rate.faixa_200;
+  if (rate.faixa_150 != null && peso <= 150) return rate.faixa_150;
+  if (rate.faixa_100 != null && peso <= 100) return rate.faixa_100;
+
+  // Excess weight: start from highest available band
+  if (rate.faixa_200 != null) {
+    return rate.faixa_200 + Math.max(0, peso - 200) * exRate;
+  }
+  if (rate.faixa_150 != null) {
+    return rate.faixa_150 + Math.max(0, peso - 150) * exRate;
+  }
+  if (rate.faixa_100 != null) {
+    return rate.faixa_100 + Math.max(0, peso - 100) * exRate;
+  }
+  // Only up to faixa_70
+  const base70 = rate.faixa_70 ?? rate.faixa_50 ?? 0;
+  return base70 + Math.max(0, peso - 70) * exRate;
 }
 
 function simulate(shipment: Shipment, rate: CarrierRate, icmsAliquota: number | null) {
@@ -99,36 +107,37 @@ function simulate(shipment: Shipment, rate: CarrierRate, icmsAliquota: number | 
   // EMEX: max(emex_min, valor_nf * emex_pct_nf)
   const emex = Math.max(rate.emex_min ?? 0, valorNf * (rate.emex_pct_nf ?? 0));
 
-  // TDA: max(tda_min, frete_base_peso * tda_pct_fr)
-  const tda = Math.max(rate.tda_min ?? 0, frete_base_peso * (rate.tda_pct_fr ?? 0));
+  // TDA: max(tda_min, valor_nf * tda_pct_fr) — base is valor_nf per Excel
+  const tda = Math.max(rate.tda_min ?? 0, valorNf * (rate.tda_pct_fr ?? 0));
 
-  // TSO: max(tso_min, frete_base_peso * tso_pct)
-  const tso = Math.max(rate.tso_min ?? 0, frete_base_peso * (rate.tso_pct ?? 0));
+  // TSO: max(tso_min, valor_nf * tso_pct) — base is valor_nf per Excel
+  const tso = Math.max(rate.tso_min ?? 0, valorNf * (rate.tso_pct ?? 0));
 
-  // TDE: max(tde_min, frete_base_peso * tde_pct_fr, peso * tde_por_kg)
+  // TDE (tx_redespacho): max(tde_min, frete_base_peso * tde_pct_fr, peso * tde_por_kg)
   const tx_redespacho = Math.max(
     rate.tde_min ?? 0,
     frete_base_peso * (rate.tde_pct_fr ?? 0),
     peso * (rate.tde_por_kg ?? 0)
   );
 
-  // Frete peso (subtotal before ICMS/TRT)
+  // Frete peso (subtotal before ICMS)
   const frete_peso = frete_base_peso + adv + sec_tas + pedagio + gris + sefaz + emex + tda + tso;
 
-  // ADM/Rodo tax (same as frete_peso for the ICMS base)
-  const adm_rodo_tax = frete_peso + tx_redespacho;
-
-  // ICMS: frete_c_icms = adm_rodo_tax / (1 - aliquota)
-  let frete_c_icms = adm_rodo_tax;
+  // ICMS: frete_c_icms = frete_peso / (1 - aliquota)
+  // tx_redespacho is added AFTER ICMS, not before
+  let frete_c_icms = frete_peso;
   if (icmsAliquota && icmsAliquota > 0) {
-    frete_c_icms = adm_rodo_tax / (1 - icmsAliquota);
+    frete_c_icms = frete_peso / (1 - icmsAliquota);
   }
 
   // TRT: max(trt_min, frete_c_icms * trt_pct_fr)
   const trt_calc = Math.max(rate.trt_min ?? 0, frete_c_icms * (rate.trt_pct_fr ?? 0));
 
-  // Final freight
-  const frete_final = frete_c_icms + trt_calc;
+  // Final freight = frete_c_icms + TRT + tx_redespacho
+  const frete_final = frete_c_icms + trt_calc + tx_redespacho;
+
+  // adm_rodo_tax kept for reference (frete_peso without extras)
+  const adm_rodo_tax = frete_peso;
 
   const diferenca_valor = shipment.valor_cobrado - frete_final;
   const pct_dif = frete_final > 0 ? diferenca_valor / frete_final : 0;
@@ -136,7 +145,7 @@ function simulate(shipment: Shipment, rate: CarrierRate, icmsAliquota: number | 
   const reais_kg_proposta = peso > 0 ? frete_final / peso : 0;
 
   return {
-    study_id: "", // filled later
+    study_id: "",
     shipment_row_id: shipment.id,
     rate_row_id: rate.id,
     match_status: "OK",
@@ -156,6 +165,8 @@ function simulate(shipment: Shipment, rate: CarrierRate, icmsAliquota: number | 
     trt_calc: round2(trt_calc),
     frete_final: round2(frete_final),
     valor_cobrado: round2(shipment.valor_cobrado),
+    valor_nf: round2(valorNf),
+    peso: round2(peso),
     diferenca_valor: round2(diferenca_valor),
     pct_dif: round4(pct_dif),
     reais_kg_hj: round2(reais_kg_hj),
@@ -196,14 +207,12 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Load all data in parallel
     const [rates, shipments, icmsRows] = await Promise.all([
       fetchAll(supabase, "carrier_rates", "*", { study_id }),
       fetchAll(supabase, "shipments_paid", "id, uf, cidade_corrigida, peso, valor_nf, valor_cobrado", { study_id }),
       fetchAll(supabase, "icms_uf", "uf, aliquota", {}),
     ]);
 
-    // Build lookup maps
     const rateMap = new Map<string, CarrierRate>();
     const rateUFs = new Set<string>();
     for (const r of rates) {
@@ -213,16 +222,13 @@ Deno.serve(async (req) => {
     const icmsMap = new Map<string, number>();
     for (const i of icmsRows) icmsMap.set(i.uf, i.aliquota);
 
-    // Delete previous simulations
     await supabase.from("simulations").delete().eq("study_id", study_id);
 
-    // Process shipments in batches
     const BATCH = 2000;
     let processed = 0;
     let matched = 0;
     let notFound = 0;
 
-    // Filter to relevant UFs only
     const relevantShipments = shipments.filter((s: Shipment) => rateUFs.has(s.uf));
 
     for (let i = 0; i < relevantShipments.length; i += BATCH) {
@@ -240,6 +246,8 @@ Deno.serve(async (req) => {
             rate_row_id: null,
             match_status: "NOT_FOUND",
             valor_cobrado: s.valor_cobrado,
+            valor_nf: s.valor_nf,
+            peso: s.peso,
             reais_kg_hj: s.peso > 0 ? round2(s.valor_cobrado / s.peso) : 0,
             errors: `Cidade ${s.cidade_corrigida}/${s.uf} não encontrada na tabela`,
           });
@@ -249,7 +257,6 @@ Deno.serve(async (req) => {
 
         const icms = icmsMap.get(s.uf) ?? null;
         if (icms === null) {
-          // Still simulate but flag
           const result = simulate(s, rate, 0);
           result.study_id = study_id;
           result.match_status = "MISSING_ICMS";
