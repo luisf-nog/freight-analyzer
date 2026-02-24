@@ -3,16 +3,26 @@
  */
 import * as XLSX from "xlsx";
 
-/** Remove accents from string */
+/** Remove accents from string, handling corrupted/mojibake characters */
 export function removeAccents(str: string): string {
-  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  // Common mojibake replacements (UTF-8 decoded as Latin-1)
+  let s = str
+    .replace(/Ã£/g, "a").replace(/Ã¡/g, "a").replace(/Ã¢/g, "a").replace(/Ã /g, "a").replace(/Ã¤/g, "a").replace(/Ã¥/g, "a")
+    .replace(/Ã©/g, "e").replace(/Ãª/g, "e").replace(/Ã¨/g, "e").replace(/Ã«/g, "e")
+    .replace(/Ã­/g, "i").replace(/Ã®/g, "i").replace(/Ã¬/g, "i").replace(/Ã¯/g, "i")
+    .replace(/Ã³/g, "o").replace(/Ã´/g, "o").replace(/Ã²/g, "o").replace(/Ãµ/g, "o").replace(/Ã¶/g, "o")
+    .replace(/Ãº/g, "u").replace(/Ã¹/g, "u").replace(/Ã»/g, "u").replace(/Ã¼/g, "u")
+    .replace(/Ã§/g, "c").replace(/Ã±/g, "n");
+  // Standard NFD normalization
+  s = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return s;
 }
 
-/** Normalize city name: trim, uppercase, remove accents, strip non-alpha chars */
+/** Normalize city name: trim, uppercase, remove accents, clean up */
 export function normalizeCity(city: string): string {
   let s = removeAccents(city.trim().toUpperCase());
-  // Remove any remaining non-ASCII (handles mojibake/corrupted accents)
-  s = s.replace(/[^A-Z0-9 \-']/g, "");
+  // Remove any remaining non-printable or non-ASCII
+  s = s.replace(/[^\x20-\x7E]/g, "");
   // Collapse multiple spaces
   s = s.replace(/\s+/g, " ").trim();
   return s;
