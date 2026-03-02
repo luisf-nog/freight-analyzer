@@ -49,11 +49,6 @@ interface Shipment {
   valor_cobrado: number;
 }
 
-/**
- * Determines freight base by weight band.
- * When higher bands are null, excess starts from the last available band.
- * e.g. if faixa_100/150/200 are all null, excess = faixa_70 + (peso-70)*rate
- */
 function getFreteBasePeso(rate: CarrierRate, peso: number): number {
   if (peso <= 10) return rate.faixa_10 ?? 0;
   if (peso <= 20) return rate.faixa_20 ?? rate.faixa_10 ?? 0;
@@ -63,21 +58,13 @@ function getFreteBasePeso(rate: CarrierRate, peso: number): number {
 
   const exRate = rate.frete_kg_ex_200 ?? 0;
 
-  // Check bands in ascending order (like Excel MATCH with match_type=1)
   if (rate.faixa_100 != null && peso <= 100) return rate.faixa_100;
   if (rate.faixa_150 != null && peso <= 150) return rate.faixa_150;
   if (rate.faixa_200 != null && peso <= 200) return rate.faixa_200;
 
-  // Excess weight: start from highest available band
-  if (rate.faixa_200 != null) {
-    return rate.faixa_200 + (peso - 200) * exRate;
-  }
-  if (rate.faixa_150 != null) {
-    return rate.faixa_150 + (peso - 150) * exRate;
-  }
-  if (rate.faixa_100 != null) {
-    return rate.faixa_100 + (peso - 100) * exRate;
-  }
+  if (rate.faixa_200 != null) return rate.faixa_200 + (peso - 200) * exRate;
+  if (rate.faixa_150 != null) return rate.faixa_150 + (peso - 150) * exRate;
+  if (rate.faixa_100 != null) return rate.faixa_100 + (peso - 100) * exRate;
   const base70 = rate.faixa_70 ?? rate.faixa_50 ?? 0;
   return base70 + (peso - 70) * exRate;
 }
@@ -85,59 +72,28 @@ function getFreteBasePeso(rate: CarrierRate, peso: number): number {
 function simulate(shipment: Shipment, rate: CarrierRate, icmsAliquota: number | null) {
   const peso = shipment.peso;
   const valorNf = shipment.valor_nf;
-
   const frete_base_peso = getFreteBasePeso(rate, peso);
-
-  // ADV: max(adv_min, valor_nf * adv_pct_nf)
   const adv = Math.max(rate.adv_min ?? 0, valorNf * (rate.adv_pct_nf ?? 0));
-
-  // SEC + TAS
   const sec_tas = (rate.sec_cat ?? 0) + (rate.tas ?? 0);
-
-  // Pedágio: ceil(peso / 100) * pedagio_fr_100kg
   const pedagio = Math.ceil(peso / 100) * (rate.pedagio_fr_100kg ?? 0);
-
-  // GRIS: max(gris_min, valor_nf * gris_pct_nf)
   const gris = Math.max(rate.gris_min ?? 0, valorNf * (rate.gris_pct_nf ?? 0));
-
-  // SEFAZ
   const sefaz = rate.sefaz ?? 0;
-
-  // EMEX: max(emex_min, valor_nf * emex_pct_nf)
   const emex = Math.max(rate.emex_min ?? 0, valorNf * (rate.emex_pct_nf ?? 0));
-
-  // TDA: max(tda_min, valor_nf * tda_pct_fr) — base is valor_nf per Excel
   const tda = Math.max(rate.tda_min ?? 0, valorNf * (rate.tda_pct_fr ?? 0));
-
-  // TSO: max(tso_min, valor_nf * tso_pct) — base is valor_nf per Excel
   const tso = Math.max(rate.tso_min ?? 0, valorNf * (rate.tso_pct ?? 0));
-
-  // TDE (tx_redespacho): max(tde_min, frete_base_peso * tde_pct_fr, peso * tde_por_kg)
   const tx_redespacho = Math.max(
     rate.tde_min ?? 0,
     frete_base_peso * (rate.tde_pct_fr ?? 0),
     peso * (rate.tde_por_kg ?? 0)
   );
-
-  // Frete peso (subtotal before ICMS)
   const frete_peso = frete_base_peso + adv + sec_tas + pedagio + gris + sefaz + emex + tda + tso;
-
-  // ICMS: frete_c_icms = frete_peso / (1 - aliquota)
-  // tx_redespacho is added AFTER ICMS, not before
   let frete_c_icms = frete_peso;
   if (icmsAliquota && icmsAliquota > 0) {
     frete_c_icms = frete_peso / (1 - icmsAliquota);
   }
-
-  // TRT: max(trt_min, frete_c_icms * trt_pct_fr)
   const trt_calc = Math.max(rate.trt_min ?? 0, frete_c_icms * (rate.trt_pct_fr ?? 0));
-
-  // Final freight = frete_c_icms + TRT + tx_redespacho
   const frete_final = frete_c_icms + trt_calc + tx_redespacho;
-
-  // adm_rodo_tax kept for reference (frete_peso without extras)
   const adm_rodo_tax = frete_peso;
-
   const diferenca_valor = shipment.valor_cobrado - frete_final;
   const pct_dif = frete_final > 0 ? diferenca_valor / frete_final : 0;
   const reais_kg_hj = peso > 0 ? shipment.valor_cobrado / peso : 0;
@@ -198,7 +154,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { study_id } = await req.json();
+    const { study_id, batch_offset = 0, batch_size = 500, is_first_batch = true } = await req.json();
     if (!study_id) throw new Error("study_id required");
 
     const supabase = createClient(
@@ -206,9 +162,14 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const [rates, shipments, icmsRows] = await Promise.all([
+    // On first batch, delete old simulations and load reference data
+    if (is_first_batch) {
+      await supabase.from("simulations").delete().eq("study_id", study_id);
+    }
+
+    // Load rates and ICMS (small tables, always needed)
+    const [rates, icmsRows] = await Promise.all([
       fetchAll(supabase, "carrier_rates", "*", { study_id }),
-      fetchAll(supabase, "shipments_paid", "id, uf, cidade_corrigida, peso, valor_nf, valor_cobrado", { study_id }),
       fetchAll(supabase, "icms_uf", "uf, aliquota", {}),
     ]);
 
@@ -221,65 +182,78 @@ Deno.serve(async (req) => {
     const icmsMap = new Map<string, number>();
     for (const i of icmsRows) icmsMap.set(i.uf, i.aliquota);
 
-    await supabase.from("simulations").delete().eq("study_id", study_id);
+    // Fetch only this batch of shipments
+    let q = supabase
+      .from("shipments_paid")
+      .select("id, uf, cidade_corrigida, peso, valor_nf, valor_cobrado")
+      .eq("study_id", study_id)
+      .order("id")
+      .range(batch_offset, batch_offset + batch_size - 1);
+    
+    const { data: shipments, error: shipErr } = await q;
+    if (shipErr) throw shipErr;
 
-    const BATCH = 2000;
-    let processed = 0;
+    const shipmentsBatch = shipments || [];
+    const relevantShipments = shipmentsBatch.filter((s: Shipment) => rateUFs.has(s.uf));
+
     let matched = 0;
     let notFound = 0;
+    const rows: any[] = [];
 
-    const relevantShipments = shipments.filter((s: Shipment) => rateUFs.has(s.uf));
+    for (const s of relevantShipments) {
+      const key = `${s.uf}|${s.cidade_corrigida}`;
+      const rate = rateMap.get(key);
 
-    for (let i = 0; i < relevantShipments.length; i += BATCH) {
-      const batch = relevantShipments.slice(i, i + BATCH);
-      const rows: any[] = [];
+      if (!rate) {
+        rows.push({
+          study_id,
+          shipment_row_id: s.id,
+          rate_row_id: null,
+          match_status: "NOT_FOUND",
+          valor_cobrado: s.valor_cobrado,
+          valor_nf: s.valor_nf,
+          peso: s.peso,
+          reais_kg_hj: s.peso > 0 ? round2(s.valor_cobrado / s.peso) : 0,
+          errors: `Cidade ${s.cidade_corrigida}/${s.uf} não encontrada na tabela`,
+        });
+        notFound++;
+        continue;
+      }
 
-      for (const s of batch) {
-        const key = `${s.uf}|${s.cidade_corrigida}`;
-        const rate = rateMap.get(key);
-
-        if (!rate) {
-          rows.push({
-            study_id,
-            shipment_row_id: s.id,
-            rate_row_id: null,
-            match_status: "NOT_FOUND",
-            valor_cobrado: s.valor_cobrado,
-            valor_nf: s.valor_nf,
-            peso: s.peso,
-            reais_kg_hj: s.peso > 0 ? round2(s.valor_cobrado / s.peso) : 0,
-            errors: `Cidade ${s.cidade_corrigida}/${s.uf} não encontrada na tabela`,
-          });
-          notFound++;
-          continue;
-        }
-
-        const icms = icmsMap.get(s.uf) ?? null;
-        if (icms === null) {
-          const result = simulate(s, rate, 0);
-          result.study_id = study_id;
-          result.match_status = "MISSING_ICMS";
-          result.errors = `Alíquota ICMS não definida para ${s.uf}`;
-          rows.push(result);
-          matched++;
-          continue;
-        }
-
-        const result = simulate(s, rate, icms);
+      const icms = icmsMap.get(s.uf) ?? null;
+      if (icms === null) {
+        const result = simulate(s, rate, 0);
         result.study_id = study_id;
+        result.match_status = "MISSING_ICMS";
+        result.errors = `Alíquota ICMS não definida para ${s.uf}`;
         rows.push(result);
         matched++;
+        continue;
       }
 
-      if (rows.length > 0) {
-        const { error } = await supabase.from("simulations").insert(rows);
-        if (error) throw error;
-      }
-      processed += batch.length;
+      const result = simulate(s, rate, icms);
+      result.study_id = study_id;
+      rows.push(result);
+      matched++;
     }
 
+    if (rows.length > 0) {
+      const { error } = await supabase.from("simulations").insert(rows);
+      if (error) throw error;
+    }
+
+    const hasMore = shipmentsBatch.length === batch_size;
+
     return new Response(
-      JSON.stringify({ success: true, processed, matched, notFound, total: relevantShipments.length }),
+      JSON.stringify({
+        success: true,
+        processed: relevantShipments.length,
+        matched,
+        notFound,
+        batchFetched: shipmentsBatch.length,
+        hasMore,
+        nextOffset: batch_offset + batch_size,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
