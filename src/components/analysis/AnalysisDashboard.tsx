@@ -137,6 +137,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   const [drillRow, setDrillRow] = useState<SimRow | null>(null);
   const [sortCol, setSortCol] = useState<string>("diferenca");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [drillSortCol, setDrillSortCol] = useState<string>("shipment_peso");
+  const [drillSortDir, setDrillSortDir] = useState<"asc" | "desc">("desc");
   const [deadlinesRealized, setDeadlinesRealized] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
   const [deadlinesProposed, setDeadlinesProposed] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
 
@@ -258,8 +260,13 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
 
   const drillData = useMemo(() => {
     if (!drillCity) return [];
-    return filtered.filter(r => r.shipment_uf === drillCity.uf && r.shipment_cidade === drillCity.cidade);
-  }, [filtered, drillCity]);
+    const data = filtered.filter(r => r.shipment_uf === drillCity.uf && r.shipment_cidade === drillCity.cidade);
+    return [...data].sort((a, b) => {
+      const av = (a as any)[drillSortCol] ?? 0;
+      const bv = (b as any)[drillSortCol] ?? 0;
+      return drillSortDir === "asc" ? av - bv : bv - av;
+    });
+  }, [filtered, drillCity, drillSortCol, drillSortDir]);
 
   const availableUFs = useMemo(() => {
     const set = new Set(rows.filter(r => r.match_status !== "NOT_FOUND").map(r => r.shipment_uf));
@@ -313,9 +320,39 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     }));
   }, [filtered]);
 
+  const COST_COMPONENTS = [
+    { key: "frete_base_peso", label: "Frete Base Peso" },
+    { key: "adv", label: "ADV" },
+    { key: "sec_tas", label: "SEC + TAS" },
+    { key: "pedagio", label: "Pedágio" },
+    { key: "gris", label: "GRIS" },
+    { key: "sefaz", label: "SEFAZ" },
+    { key: "emex", label: "EMEX" },
+    { key: "tda", label: "TDA" },
+    { key: "tso", label: "TSO" },
+    { key: "tx_redespacho", label: "Tx Redespacho" },
+    { key: "trt_calc", label: "TRT" },
+  ] as const;
+
+  const componentBreakdown = useMemo(() => {
+    const totals = COST_COMPONENTS.map(c => ({
+      ...c,
+      total: filtered.reduce((s, r) => s + ((r as any)[c.key] ?? 0), 0),
+    }));
+    const grandTotal = totals.reduce((s, c) => s + c.total, 0);
+    return totals
+      .map(c => ({ ...c, pct: grandTotal > 0 ? (c.total / grandTotal) * 100 : 0 }))
+      .sort((a, b) => b.total - a.total);
+  }, [filtered]);
+
   const toggleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortCol(col); setSortDir("asc"); }
+  };
+
+  const toggleDrillSort = (col: string) => {
+    if (drillSortCol === col) setDrillSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setDrillSortCol(col); setDrillSortDir("desc"); }
   };
 
   const toggleUF = (uf: string) => {
@@ -926,6 +963,54 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
         </div>
       </section>
 
+      {/* ═══ BLOCO — Composição de Custos ═══ */}
+      <section>
+        <SectionHeader icon={<Percent className="h-4 w-4" />} title="Composição de Custos da Proposta" />
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Qual taxa pesa mais no frete?</CardTitle>
+            <CardDescription>Soma de cada componente sobre todos os embarques filtrados, ordenado pelo maior impacto</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/30">
+                  <TableHead className="font-semibold">Componente</TableHead>
+                  <TableHead className="text-right font-semibold">Total (R$)</TableHead>
+                  <TableHead className="text-right font-semibold">% do Frete</TableHead>
+                  <TableHead className="font-semibold">Participação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {componentBreakdown.map((c) => (
+                  <TableRow key={c.key}>
+                    <TableCell className="font-semibold">{c.label}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">{formatBRL(c.total)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{c.pct.toFixed(1)}%</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-muted/50">
+                          <div
+                            className="h-full rounded-full bg-primary transition-all duration-500"
+                            style={{ width: `${Math.max(c.pct, 0.5)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="border-t-2 border-primary/20 bg-muted/40 font-bold">
+                  <TableCell className="text-primary">TOTAL</TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">{formatBRL(componentBreakdown.reduce((s, c) => s + c.total, 0))}</TableCell>
+                  <TableCell className="text-right tabular-nums">100%</TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </section>
+
       {/* ═══ BLOCO 5 — Distribuição do Impacto ═══ */}
       <section>
         <SectionHeader icon={<Percent className="h-4 w-4" />} title="Distribuição do Impacto" />
@@ -1143,18 +1228,18 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
             <div className="max-h-[60vh] overflow-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead className="text-right font-semibold">Peso</TableHead>
-                    <TableHead className="text-right font-semibold">Valor NF</TableHead>
-                    <TableHead className="text-right font-semibold">Pago</TableHead>
-                    <TableHead className="text-right font-semibold">Proposta</TableHead>
-                    <TableHead className="text-right font-semibold">Dif (R$)</TableHead>
-                    <TableHead className="text-right font-semibold">% Dif</TableHead>
+                  <TableRow className="bg-muted/30 sticky top-0 z-10">
+                    <TableHead className="cursor-pointer text-right font-semibold" onClick={() => toggleDrillSort("shipment_peso")}>Peso <ArrowUpDown className="inline h-3 w-3 opacity-50" /></TableHead>
+                    <TableHead className="cursor-pointer text-right font-semibold" onClick={() => toggleDrillSort("shipment_valor_nf")}>Valor NF <ArrowUpDown className="inline h-3 w-3 opacity-50" /></TableHead>
+                    <TableHead className="cursor-pointer text-right font-semibold" onClick={() => toggleDrillSort("valor_cobrado")}>Pago <ArrowUpDown className="inline h-3 w-3 opacity-50" /></TableHead>
+                    <TableHead className="cursor-pointer text-right font-semibold" onClick={() => toggleDrillSort("frete_final")}>Proposta <ArrowUpDown className="inline h-3 w-3 opacity-50" /></TableHead>
+                    <TableHead className="cursor-pointer text-right font-semibold" onClick={() => toggleDrillSort("diferenca_valor")}>Dif (R$) <ArrowUpDown className="inline h-3 w-3 opacity-50" /></TableHead>
+                    <TableHead className="cursor-pointer text-right font-semibold" onClick={() => toggleDrillSort("pct_dif")}>% Dif <ArrowUpDown className="inline h-3 w-3 opacity-50" /></TableHead>
                     <TableHead />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {drillData.slice(0, 200).map((r, i) => {
+                  {drillData.map((r, i) => {
                     const d = (r.valor_cobrado ?? 0) - (r.frete_final ?? 0);
                     const p = (r.frete_final ?? 0) > 0 ? (d / (r.frete_final ?? 1)) * 100 : 0;
                     return (
@@ -1173,7 +1258,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                   })}
                 </TableBody>
               </Table>
-              {drillData.length > 200 && <p className="p-3 text-center text-xs text-muted-foreground">Mostrando 200 de {drillData.length}</p>}
             </div>
           )}
         </DialogContent>
