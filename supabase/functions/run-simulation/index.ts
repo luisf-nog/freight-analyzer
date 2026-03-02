@@ -69,7 +69,7 @@ function getFreteBasePeso(rate: CarrierRate, peso: number): number {
   return base70 + (peso - 70) * exRate;
 }
 
-function simulate(shipment: Shipment, rate: CarrierRate, icmsAliquota: number | null) {
+function simulate(shipment: Shipment, rate: CarrierRate, icmsAliquota: number | null, marginPct: number) {
   const peso = shipment.peso;
   const valorNf = shipment.valor_nf;
   const frete_base_peso = getFreteBasePeso(rate, peso);
@@ -92,7 +92,8 @@ function simulate(shipment: Shipment, rate: CarrierRate, icmsAliquota: number | 
     frete_c_icms = frete_peso / (1 - icmsAliquota);
   }
   const trt_calc = Math.max(rate.trt_min ?? 0, frete_c_icms * (rate.trt_pct_fr ?? 0));
-  const frete_final = frete_c_icms + trt_calc + tx_redespacho;
+  const frete_sem_margem = frete_c_icms + trt_calc + tx_redespacho;
+  const frete_final = frete_sem_margem * (1 + marginPct);
   const adm_rodo_tax = frete_peso;
   const diferenca_valor = shipment.valor_cobrado - frete_final;
   const pct_dif = frete_final > 0 ? diferenca_valor / frete_final : 0;
@@ -154,7 +155,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { study_id, batch_offset = 0, batch_size = 500, is_first_batch = true } = await req.json();
+    const { study_id, batch_offset = 0, batch_size = 500, is_first_batch = true, margin_pct = 0 } = await req.json();
     if (!study_id) throw new Error("study_id required");
 
     const supabase = createClient(
@@ -224,8 +225,8 @@ Deno.serve(async (req) => {
       usedRateKeys.add(key);
       const icms = icmsMap.get(s.uf) ?? null;
       if (icms === null) {
-        const result = simulate(s, rate, 0);
-        result.study_id = study_id;
+      const result = simulate(s, rate, 0, margin_pct);
+      result.study_id = study_id;
         result.match_status = "MISSING_ICMS";
         result.errors = `Alíquota ICMS não definida para ${s.uf}`;
         rows.push(result);
@@ -233,7 +234,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const result = simulate(s, rate, icms);
+      const result = simulate(s, rate, icms, margin_pct);
       result.study_id = study_id;
       rows.push(result);
       matched++;
