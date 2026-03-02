@@ -12,7 +12,7 @@ import {
   Download, TrendingUp, TrendingDown, ChevronDown, ChevronRight,
   AlertTriangle, CheckCircle2, ShieldAlert, BarChart3, Search,
   DollarSign, Scale, Percent, FileText, ArrowUpDown, Clock,
-  MapPin, Weight, Target, Activity,
+  MapPin, Weight, Target, Activity, Eye, EyeOff,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -139,6 +139,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [drillSortCol, setDrillSortCol] = useState<string>("shipment_peso");
   const [drillSortDir, setDrillSortDir] = useState<"asc" | "desc">("desc");
+  const [hideSensitive, setHideSensitive] = useState(false);
   const [deadlinesRealized, setDeadlinesRealized] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
   const [deadlinesProposed, setDeadlinesProposed] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
 
@@ -520,6 +521,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   }
 
   const difColor = (v: number) => v > 0 ? "text-emerald-600" : v < 0 ? "text-destructive" : "text-muted-foreground";
+  const blurClass = hideSensitive ? "blur-sm select-none" : "";
   const difBg = (v: number) => v > 0 ? "bg-emerald-50 dark:bg-emerald-950/30" : v < 0 ? "bg-red-50 dark:bg-red-950/30" : "";
 
   return (
@@ -545,6 +547,10 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
               {WEIGHT_BANDS.map(b => <SelectItem key={b.label} value={b.label}>{b.label}</SelectItem>)}
             </SelectContent>
           </Select>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => setHideSensitive(h => !h)}>
+            {hideSensitive ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {hideSensitive ? "Mostrar valores" : "Ocultar valores"}
+          </Button>
           <Button variant="outline" size="sm" className="ml-auto gap-2" onClick={exportCSV}>
             <Download className="h-4 w-4" /> Exportar CSV
           </Button>
@@ -561,6 +567,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
             sublabel={`${stats.qtdNF.toLocaleString("pt-BR")} NFs`}
             iconBg="bg-muted"
             icon={<DollarSign className="h-5 w-5 text-muted-foreground" />}
+            blurValue={hideSensitive}
           />
           <HeroCard
             label="Total Proposta"
@@ -568,6 +575,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
             sublabel={`R$/kg ${stats.rkgProposta.toFixed(2)}`}
             iconBg="bg-primary/10"
             icon={<DollarSign className="h-5 w-5 text-primary" />}
+            blurValue={hideSensitive}
           />
           <HeroCard
             label="Economia Total"
@@ -592,14 +600,14 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
               <div className="mt-3 flex items-center gap-4">
                 <div className="text-center">
                   <p className="text-[11px] text-muted-foreground">Pago</p>
-                  <p className="text-xl font-bold tabular-nums">R$ {stats.rkgPago.toFixed(2)}</p>
+                  <p className={`text-xl font-bold tabular-nums ${blurClass}`}>R$ {stats.rkgPago.toFixed(2)}</p>
                 </div>
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
                   <span className="text-sm text-muted-foreground">→</span>
                 </div>
                 <div className="text-center">
                   <p className="text-[11px] text-muted-foreground">Proposta</p>
-                  <p className="text-xl font-bold tabular-nums text-primary">R$ {stats.rkgProposta.toFixed(2)}</p>
+                  <p className={`text-xl font-bold tabular-nums text-primary ${blurClass}`}>R$ {stats.rkgProposta.toFixed(2)}</p>
                 </div>
               </div>
             </CardContent>
@@ -618,6 +626,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
               sublabel={`${deadlineStats.cidadesReal.toLocaleString("pt-BR")} cidades`}
               iconBg="bg-muted"
               icon={<Clock className="h-5 w-5 text-muted-foreground" />}
+              blurValue={hideSensitive}
             />
             <HeroCard
               label="Prazo Médio Proposta"
@@ -724,15 +733,15 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                               <TableCell className="font-bold text-foreground">{uf.uf}</TableCell>
                               <TableCell><Badge variant="outline" className="text-[10px] font-medium">{getMacro(uf.uf)}</Badge></TableCell>
                               <TableCell className="text-right tabular-nums">{uf.qtd.toLocaleString("pt-BR")}</TableCell>
-                              <TableCell className="text-right tabular-nums">{formatBRL(uf.cobrado)}</TableCell>
-                              <TableCell className="text-right tabular-nums">{formatBRL(uf.proposto)}</TableCell>
+                              <TableCell className={`text-right tabular-nums ${blurClass}`}>{formatBRL(uf.cobrado)}</TableCell>
+                              <TableCell className={`text-right tabular-nums ${blurClass}`}>{formatBRL(uf.proposto)}</TableCell>
                               <TableCell className={`text-right font-bold tabular-nums ${difColor(uf.dif)}`}>{formatBRL(uf.dif)}</TableCell>
                               <TableCell className={`text-right tabular-nums ${difColor(uf.dif)}`}>{pct >= 0 ? "+" : ""}{pct.toFixed(1)}%</TableCell>
-                              <TableCell className="text-right tabular-nums">R$ {rkgH.toFixed(2)}</TableCell>
+                              <TableCell className={`text-right tabular-nums ${blurClass}`}>R$ {rkgH.toFixed(2)}</TableCell>
                               <TableCell className="text-right tabular-nums">R$ {rkgP.toFixed(2)}</TableCell>
                               <TableCell className="text-right tabular-nums">{formatNumber(pm, 1)}</TableCell>
-                              <TableCell className="text-right"><Badge variant={wr >= 60 ? "default" : "secondary"} className="text-[10px]">{wr.toFixed(0)}%</Badge></TableCell>
-                              {dl && <TableCell className="text-right tabular-nums">{dl.realizado !== null ? dl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
+                              <TableCell className={`text-right ${blurClass}`}><Badge variant={wr >= 60 ? "default" : "secondary"} className="text-[10px]">{wr.toFixed(0)}%</Badge></TableCell>
+                              {dl && <TableCell className={`text-right tabular-nums ${blurClass}`}>{dl.realizado !== null ? dl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
                               {dl && <TableCell className={`text-right tabular-nums ${dl.realizado !== null && dl.proposto !== null ? (dl.proposto < dl.realizado ? "text-emerald-600" : dl.proposto > dl.realizado ? "text-destructive" : "") : ""}`}>{dl.proposto !== null ? dl.proposto.toFixed(1) + "d" : "—"}</TableCell>}
                             </TableRow>
                             {subRows.map(s => {
@@ -748,15 +757,15 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                                   <TableCell className="pl-8 text-muted-foreground">{uf.uf}</TableCell>
                                   <TableCell><Badge variant="outline" className="border-dashed text-[10px]">{s.regiao}</Badge></TableCell>
                                   <TableCell className="text-right tabular-nums">{s.qtd.toLocaleString("pt-BR")}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatBRL(s.cobrado)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatBRL(s.proposto)}</TableCell>
+                                  <TableCell className={`text-right tabular-nums ${blurClass}`}>{formatBRL(s.cobrado)}</TableCell>
+                                  <TableCell className={`text-right tabular-nums ${blurClass}`}>{formatBRL(s.proposto)}</TableCell>
                                   <TableCell className={`text-right font-semibold tabular-nums ${difColor(s.dif)}`}>{formatBRL(s.dif)}</TableCell>
                                   <TableCell className={`text-right tabular-nums ${difColor(s.dif)}`}>{sp >= 0 ? "+" : ""}{sp.toFixed(1)}%</TableCell>
-                                  <TableCell className="text-right tabular-nums">R$ {srkgH.toFixed(2)}</TableCell>
+                                  <TableCell className={`text-right tabular-nums ${blurClass}`}>R$ {srkgH.toFixed(2)}</TableCell>
                                   <TableCell className="text-right tabular-nums">R$ {srkgP.toFixed(2)}</TableCell>
                                   <TableCell className="text-right tabular-nums">{formatNumber(spm, 1)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{swr.toFixed(0)}%</TableCell>
-                                  {sdl && <TableCell className="text-right tabular-nums">{sdl.realizado !== null ? sdl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
+                                  <TableCell className={`text-right tabular-nums ${blurClass}`}>{swr.toFixed(0)}%</TableCell>
+                                  {sdl && <TableCell className={`text-right tabular-nums ${blurClass}`}>{sdl.realizado !== null ? sdl.realizado.toFixed(1) + "d" : "—"}</TableCell>}
                                   {sdl && <TableCell className={`text-right tabular-nums ${sdl.realizado !== null && sdl.proposto !== null ? (sdl.proposto < sdl.realizado ? "text-emerald-600" : sdl.proposto > sdl.realizado ? "text-destructive" : "") : ""}`}>{sdl.proposto !== null ? sdl.proposto.toFixed(1) + "d" : "—"}</TableCell>}
                                 </TableRow>
                               );
@@ -1161,7 +1170,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                       return [formatBRL(value), name];
                     }}
                   />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} verticalAlign="top" />
                   <Bar yAxisId="left" dataKey="cobrado" name="Valor Pago" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} fillOpacity={0.8} />
                   <Line yAxisId="right" dataKey="pctAcumulado" name="% Acumulado" stroke="hsl(0, 84%, 60%)" strokeWidth={2.5} dot={{ r: 3 }} />
                   {/* 80% reference line */}
@@ -1280,9 +1289,9 @@ function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }
   );
 }
 
-function HeroCard({ label, value, sublabel, valueColor, iconBg, icon, highlight }: {
+function HeroCard({ label, value, sublabel, valueColor, iconBg, icon, highlight, blurValue }: {
   label: string; value: string; sublabel?: string; valueColor?: string;
-  iconBg?: string; icon?: React.ReactNode; highlight?: boolean;
+  iconBg?: string; icon?: React.ReactNode; highlight?: boolean; blurValue?: boolean;
 }) {
   return (
     <Card className={`relative overflow-hidden transition-shadow hover:shadow-md ${highlight ? "ring-1 ring-primary/20" : ""}`}>
@@ -1296,8 +1305,8 @@ function HeroCard({ label, value, sublabel, valueColor, iconBg, icon, highlight 
         )}
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-          <p className={`mt-1 text-xl font-bold tabular-nums leading-tight ${valueColor ?? ""}`}>{value}</p>
-          {sublabel && <p className={`mt-0.5 text-xs ${valueColor ?? "text-muted-foreground"}`}>{sublabel}</p>}
+          <p className={`mt-1 text-xl font-bold tabular-nums leading-tight ${valueColor ?? ""} ${blurValue ? "blur-sm select-none" : ""}`}>{value}</p>
+          {sublabel && <p className={`mt-0.5 text-xs ${valueColor ?? "text-muted-foreground"} ${blurValue ? "blur-sm select-none" : ""}`}>{sublabel}</p>}
         </div>
       </CardContent>
     </Card>
