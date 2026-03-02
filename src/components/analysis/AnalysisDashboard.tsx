@@ -139,14 +139,12 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [deadlinesRealized, setDeadlinesRealized] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
   const [deadlinesProposed, setDeadlinesProposed] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
-  const [unusedCarrierCities, setUnusedCarrierCities] = useState<Array<{ uf: string; cidade: string }>>([]);
-  const [totalCarrierCities, setTotalCarrierCities] = useState(0);
 
   useEffect(() => {
     if (simulationCount === 0) { setLoading(false); return; }
     const load = async () => {
       setLoading(true);
-      const [sims, shipments, realized, proposed, carrierRates] = await Promise.all([
+      const [sims, shipments, realized, proposed] = await Promise.all([
         fetchAll("simulations",
           "match_status, valor_cobrado, frete_final, diferenca_valor, pct_dif, reais_kg_hj, reais_kg_proposta, frete_base_peso, adv, sec_tas, pedagio, gris, sefaz, emex, tda, tso, tx_redespacho, frete_peso, adm_rodo_tax, frete_c_icms, trt_calc, errors, shipment_row_id",
           { study_id: studyId }),
@@ -155,7 +153,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
           { study_id: studyId }),
         fetchAll("deadlines_realized", "uf, cidade_corrigida, prazo_dias", { study_id: studyId }),
         fetchAll("deadlines_proposed", "uf, cidade_corrigida, prazo_dias", { study_id: studyId }),
-        fetchAll("carrier_rates", "uf, cidade_corrigida", { study_id: studyId }),
       ]);
       const shipMap = new Map<string, { uf: string; cidade: string; peso: number; valor_nf: number; data: string | null }>();
       for (const s of shipments) shipMap.set(s.id, { uf: s.uf, cidade: s.cidade_corrigida, peso: s.peso, valor_nf: s.valor_nf, data: s.data });
@@ -163,22 +160,6 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
         const ship = shipMap.get(sim.shipment_row_id);
         return { ...sim, shipment_uf: ship?.uf ?? "", shipment_cidade: ship?.cidade ?? "", shipment_peso: ship?.peso ?? 0, shipment_valor_nf: ship?.valor_nf ?? 0, shipment_data: ship?.data ?? null };
       });
-
-      // Compute carrier cities without matching shipments
-      const shipmentCityKeys = new Set(shipments.map((s: any) => `${s.uf}|${s.cidade_corrigida}`));
-      const carrierCityKeys = new Set<string>();
-      const unused: Array<{ uf: string; cidade: string }> = [];
-      for (const r of carrierRates) {
-        const key = `${r.uf}|${r.cidade_corrigida}`;
-        if (!carrierCityKeys.has(key)) {
-          carrierCityKeys.add(key);
-          if (!shipmentCityKeys.has(key)) {
-            unused.push({ uf: r.uf, cidade: r.cidade_corrigida });
-          }
-        }
-      }
-      setUnusedCarrierCities(unused);
-      setTotalCarrierCities(carrierCityKeys.size);
 
       setRows(merged);
       setDeadlinesRealized(realized as any);
@@ -655,75 +636,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
         </section>
       )}
 
-      {/* ═══ BLOCO 2 — Confiabilidade ═══ */}
-      <section>
-        <SectionHeader icon={<ShieldAlert className="h-4 w-4" />} title="Confiabilidade do Estudo" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <Card className={`relative overflow-hidden ${stats.matchPct >= 90 ? "border-emerald-200 dark:border-emerald-800" : "border-amber-200 dark:border-amber-800"}`}>
-            <div className={`absolute inset-0 ${stats.matchPct >= 90 ? "bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-900/10" : "bg-gradient-to-br from-amber-50/50 to-transparent dark:from-amber-900/10"}`} />
-            <CardContent className="relative flex items-center gap-4 p-5">
-              <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${stats.matchPct >= 90 ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-amber-100 dark:bg-amber-900/30"}`}>
-                <CheckCircle2 className={`h-6 w-6 ${stats.matchPct >= 90 ? "text-emerald-600" : "text-amber-500"}`} />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Match Cidade+UF</p>
-                <p className="text-2xl font-bold">{stats.matchPct.toFixed(1)}%</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className={`relative overflow-hidden ${stats.notFoundCount > 0 ? "border-amber-200 dark:border-amber-800" : ""}`}>
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30">
-                <AlertTriangle className="h-6 w-6 text-amber-500" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Embarques s/ Tarifa</p>
-                <p className="text-2xl font-bold">{stats.notFoundCount.toLocaleString("pt-BR")}</p>
-                <p className="text-[10px] text-muted-foreground">{stats.notFoundPct.toFixed(1)}% — {formatBRL(stats.notFoundValue)}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className={`relative overflow-hidden ${unusedCarrierCities.length > 0 ? "border-blue-200 dark:border-blue-800" : ""}`}>
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900/30">
-                <MapPin className="h-6 w-6 text-blue-500" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Cidades s/ Embarques</p>
-                <p className="text-2xl font-bold">{unusedCarrierCities.length.toLocaleString("pt-BR")}</p>
-                <p className="text-[10px] text-muted-foreground">de {totalCarrierCities} na tabela da transportadora</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className={`relative overflow-hidden ${stats.missingIcmsCount > 0 ? "border-orange-200 dark:border-orange-800" : ""}`}>
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-100 dark:bg-orange-900/30">
-                <FileText className="h-6 w-6 text-orange-500" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">MISSING_ICMS</p>
-                <p className="text-2xl font-bold">{stats.missingIcmsCount.toLocaleString("pt-BR")}</p>
-                <p className="text-[10px] text-muted-foreground">{stats.missingIcmsPct.toFixed(1)}% — {formatBRL(stats.missingIcmsValue)}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent" />
-            <CardContent className="relative flex items-center gap-4 p-5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                <Scale className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Volume Analisado</p>
-                <p className="text-2xl font-bold">{stats.qtdNF.toLocaleString("pt-BR")} <span className="text-sm font-normal text-muted-foreground">NFs</span></p>
-                <p className="text-[10px] text-muted-foreground">{formatNumber(stats.totalPeso, 0)} kg total</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      {/* ═══ BLOCO 3 — Tabela por UF / Macro Região / Peso ═══ */}
+      {/* ═══ BLOCO 2 — Tabela por UF / Macro Região / Peso ═══ */}
       <section>
         <SectionHeader icon={<MapPin className="h-4 w-4" />} title="Análise Geográfica e por Peso" />
         <Tabs defaultValue="uf">
