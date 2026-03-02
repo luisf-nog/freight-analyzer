@@ -285,23 +285,28 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     })).sort((a, b) => b.cobrado - a.cobrado);
   }, [ufPivot]);
 
-  // Pareto data: cumulative concentration by city
+  // Pareto data: cities where proposal is MORE EXPENSIVE (losses), sorted by biggest loss
   const paretoData = useMemo(() => {
-    const cityMap = new Map<string, { label: string; cobrado: number }>();
+    const cityMap = new Map<string, { label: string; cobrado: number; proposto: number; perda: number }>();
     for (const r of filtered) {
       const key = `${r.shipment_cidade}/${r.shipment_uf}`;
-      const agg = cityMap.get(key) ?? { label: key, cobrado: 0 };
+      const agg = cityMap.get(key) ?? { label: key, cobrado: 0, proposto: 0, perda: 0 };
       agg.cobrado += r.valor_cobrado ?? 0;
+      agg.proposto += r.frete_final ?? 0;
+      agg.perda += Math.max(0, (r.frete_final ?? 0) - (r.valor_cobrado ?? 0));
       cityMap.set(key, agg);
     }
-    const sorted = Array.from(cityMap.values()).sort((a, b) => b.cobrado - a.cobrado);
-    const grandTotal = sorted.reduce((s, c) => s + c.cobrado, 0);
+    // Only cities where proposta > cobrado (net loss)
+    const lossCities = Array.from(cityMap.values())
+      .filter(c => c.proposto > c.cobrado)
+      .sort((a, b) => b.perda - a.perda);
+    const grandTotal = lossCities.reduce((s, c) => s + c.perda, 0);
     let cumulative = 0;
-    return sorted.slice(0, 30).map((c, i) => {
-      cumulative += c.cobrado;
+    return lossCities.slice(0, 30).map((c, i) => {
+      cumulative += c.perda;
       return {
         cidade: c.label,
-        cobrado: Math.round(c.cobrado),
+        perda: Math.round(c.perda),
         pctAcumulado: grandTotal > 0 ? (cumulative / grandTotal) * 100 : 0,
         rank: i + 1,
       };
@@ -1141,46 +1146,55 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
 
       {/* ═══ BLOCO 7 — Pareto / Concentração ═══ */}
       <section>
-        <SectionHeader icon={<Activity className="h-4 w-4" />} title="Análise de Concentração (Pareto)" />
+        <SectionHeader icon={<Activity className="h-4 w-4" />} title="Onde Ajustar para Fechar (Pareto)" />
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Curva 80/20 — Gasto Acumulado por Cidade</CardTitle>
+            <CardTitle className="text-sm font-semibold">Cidades onde a proposta é mais cara — Concentração de Perdas</CardTitle>
             <CardDescription>
-              Top 30 cidades por valor pago, com % acumulado do gasto total.
+              Top {paretoData.length} cidades com maior perda (proposta {'>'} pago), com % acumulado.
               {paretoData.length > 0 && (() => {
                 const idx80 = paretoData.findIndex(d => d.pctAcumulado >= 80);
                 return idx80 >= 0
-                  ? ` → ${idx80 + 1} cidades concentram 80% do gasto.`
+                  ? ` → Ajustar ${idx80 + 1} cidades resolve 80% das perdas.`
                   : "";
               })()}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[400px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={paretoData} margin={{ top: 5, right: 30, left: 10, bottom: 80 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="cidade" tick={{ fontSize: 9 }} angle={-55} textAnchor="end" interval={0} />
-                  <YAxis yAxisId="left" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
-                  <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} tick={{ fontSize: 11 }} />
-                  <RechartsTooltip
-                    contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }}
-                    formatter={(value: number, name: string) => {
-                      if (name === "% Acumulado") return [`${(value as number).toFixed(1)}%`, name];
-                      return [formatBRL(value), name];
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} verticalAlign="top" />
-                  <Bar yAxisId="left" dataKey="cobrado" name="Valor Pago" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} fillOpacity={0.8} />
-                  <Line yAxisId="right" dataKey="pctAcumulado" name="% Acumulado" stroke="hsl(0, 84%, 60%)" strokeWidth={2.5} dot={{ r: 3 }} />
-                  {/* 80% reference line */}
-                  <Area yAxisId="right" dataKey={() => 80} name="" fill="none" stroke="hsl(var(--muted-foreground))" strokeDasharray="6 3" strokeWidth={1} dot={false} activeDot={false} legendType="none" />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-            <p className="mt-3 rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              📊 A regra de Pareto indica que ~20% das cidades/rotas concentram ~80% do custo de frete. Focar negociação nessas rotas gera maior impacto.
-            </p>
+            {paretoData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <CheckCircle2 className="h-10 w-10 text-emerald-500 mb-3" />
+                <p className="text-sm font-medium">Nenhuma cidade com proposta mais cara!</p>
+                <p className="text-xs text-muted-foreground mt-1">A proposta é competitiva em todas as cidades.</p>
+              </div>
+            ) : (
+              <>
+                <div className="h-[400px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={paretoData} margin={{ top: 5, right: 30, left: 10, bottom: 80 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis dataKey="cidade" tick={{ fontSize: 9 }} angle={-55} textAnchor="end" interval={0} />
+                      <YAxis yAxisId="left" tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
+                      <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} tick={{ fontSize: 11 }} />
+                      <RechartsTooltip
+                        contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }}
+                        formatter={(value: number, name: string) => {
+                          if (name === "% Acumulado") return [`${(value as number).toFixed(1)}%`, name];
+                          return [formatBRL(value), name];
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12 }} verticalAlign="top" />
+                      <Bar yAxisId="left" dataKey="perda" name="Perda (R$)" fill="hsl(0, 84%, 60%)" radius={[4, 4, 0, 0]} fillOpacity={0.8} />
+                      <Line yAxisId="right" dataKey="pctAcumulado" name="% Acumulado" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 3 }} />
+                      <Area yAxisId="right" dataKey={() => 80} name="" fill="none" stroke="hsl(var(--muted-foreground))" strokeDasharray="6 3" strokeWidth={1} dot={false} activeDot={false} legendType="none" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+                <p className="mt-3 rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  🎯 Essas são as cidades que a transportadora precisa ajustar na tabela para viabilizar a parceria. Foque nas primeiras cidades para resolver a maior parte do problema.
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       </section>
