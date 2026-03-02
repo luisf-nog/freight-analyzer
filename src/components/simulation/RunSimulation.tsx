@@ -89,7 +89,7 @@ export function RunSimulation({ studyId, rateCount, shipmentCount, onComplete }:
           <div className="space-y-2 max-w-xs">
             <Label htmlFor="margin" className="flex items-center gap-1.5 text-sm">
               <Percent className="h-3.5 w-3.5" />
-              Margem de segurança (%)
+              Desconto sobre valor pago (%)
             </Label>
             <Input
               id="margin"
@@ -100,10 +100,10 @@ export function RunSimulation({ studyId, rateCount, shipmentCount, onComplete }:
               value={marginPct}
               onChange={(e) => setMarginPct(Number(e.target.value))}
               disabled={running}
-              placeholder="Ex: 5"
+              placeholder="Ex: 10"
             />
             <p className="text-xs text-muted-foreground">
-              Percentual adicionado ao frete calculado para cobrir taxas pontuais (TDE, TDA, TRT, etc).
+              Percentual descontado do valor pago para simular uma negociação com a transportadora atual. Ex: 10% = compara o frete proposto contra 90% do que é pago hoje.
             </p>
           </div>
 

@@ -92,10 +92,10 @@ function simulate(shipment: Shipment, rate: CarrierRate, icmsAliquota: number | 
     frete_c_icms = frete_peso / (1 - icmsAliquota);
   }
   const trt_calc = Math.max(rate.trt_min ?? 0, frete_c_icms * (rate.trt_pct_fr ?? 0));
-  const frete_sem_margem = frete_c_icms + trt_calc + tx_redespacho;
-  const frete_final = frete_sem_margem * (1 + marginPct);
+  const frete_final = frete_c_icms + trt_calc + tx_redespacho;
   const adm_rodo_tax = frete_peso;
-  const diferenca_valor = shipment.valor_cobrado - frete_final;
+  const valor_cobrado_ajustado = shipment.valor_cobrado * (1 - marginPct);
+  const diferenca_valor = valor_cobrado_ajustado - frete_final;
   const pct_dif = frete_final > 0 ? diferenca_valor / frete_final : 0;
   const reais_kg_hj = peso > 0 ? shipment.valor_cobrado / peso : 0;
   const reais_kg_proposta = peso > 0 ? frete_final / peso : 0;
