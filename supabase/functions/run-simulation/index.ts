@@ -199,6 +199,7 @@ Deno.serve(async (req) => {
     let matched = 0;
     let notFound = 0;
     const rows: any[] = [];
+    const usedRateKeys = new Set<string>();
 
     for (const s of relevantShipments) {
       const key = `${s.uf}|${s.cidade_corrigida}`;
@@ -220,6 +221,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      usedRateKeys.add(key);
       const icms = icmsMap.get(s.uf) ?? null;
       if (icms === null) {
         const result = simulate(s, rate, 0);
@@ -235,6 +237,15 @@ Deno.serve(async (req) => {
       result.study_id = study_id;
       rows.push(result);
       matched++;
+    }
+
+    // Identify carrier cities with no matching shipments
+    const unusedCarrierCities: Array<{ uf: string; cidade: string }> = [];
+    for (const [key] of rateMap) {
+      if (!usedRateKeys.has(key)) {
+        const [uf, cidade] = key.split("|");
+        unusedCarrierCities.push({ uf, cidade });
+      }
     }
 
     if (rows.length > 0) {
@@ -253,6 +264,8 @@ Deno.serve(async (req) => {
         batchFetched: shipmentsBatch.length,
         hasMore,
         nextOffset: batch_offset + batch_size,
+        unusedCarrierCities: hasMore ? [] : unusedCarrierCities,
+        totalCarrierCities: rateMap.size,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
