@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { Play, Loader2, CheckCircle2 } from "lucide-react";
@@ -12,8 +13,11 @@ interface Props {
   onComplete: () => void;
 }
 
+const BATCH_SIZE = 500;
+
 export function RunSimulation({ studyId, rateCount, shipmentCount, onComplete }: Props) {
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<{ processed: number; matched: number; notFound: number } | null>(null);
 
   const canRun = rateCount > 0 && shipmentCount > 0;
@@ -21,14 +25,44 @@ export function RunSimulation({ studyId, rateCount, shipmentCount, onComplete }:
   const run = async () => {
     setRunning(true);
     setResult(null);
+    setProgress(0);
+
+    let offset = 0;
+    let isFirst = true;
+    let totalProcessed = 0;
+    let totalMatched = 0;
+    let totalNotFound = 0;
+
     try {
-      const { data, error } = await supabase.functions.invoke("run-simulation", {
-        body: { study_id: studyId },
-      });
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
-      setResult(data);
-      toast({ title: "Simulação concluída", description: `${data.processed} embarques processados` });
+      while (true) {
+        const { data, error } = await supabase.functions.invoke("run-simulation", {
+          body: {
+            study_id: studyId,
+            batch_offset: offset,
+            batch_size: BATCH_SIZE,
+            is_first_batch: isFirst,
+          },
+        });
+        if (error) throw error;
+        if (data.error) throw new Error(data.error);
+
+        totalProcessed += data.processed;
+        totalMatched += data.matched;
+        totalNotFound += data.notFound;
+        isFirst = false;
+
+        const pct = shipmentCount > 0
+          ? Math.min(100, Math.round((offset + data.batchFetched) / shipmentCount * 100))
+          : 100;
+        setProgress(pct);
+
+        if (!data.hasMore) break;
+        offset = data.nextOffset;
+      }
+
+      setProgress(100);
+      setResult({ processed: totalProcessed, matched: totalMatched, notFound: totalNotFound });
+      toast({ title: "Simulação concluída", description: `${totalProcessed} embarques processados` });
       onComplete();
     } catch (err: any) {
       toast({ title: "Erro na simulação", description: err.message, variant: "destructive" });
@@ -57,6 +91,13 @@ export function RunSimulation({ studyId, rateCount, shipmentCount, onComplete }:
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             {running ? "Processando..." : "Rodar Simulação"}
           </Button>
+
+          {running && (
+            <div className="space-y-2">
+              <Progress value={progress} className="h-2" />
+              <p className="text-xs text-muted-foreground text-center">{progress}% concluído</p>
+            </div>
+          )}
 
           {result && (
             <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
