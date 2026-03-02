@@ -489,6 +489,20 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     type CapInt = { regiao: string; qtd: number; cobrado: number; proposto: number; dif: number };
     type UFNode = { uf: string; qtd: number; cobrado: number; proposto: number; dif: number; capint: Map<string, CapInt> };
     type MacroNode = { regiao: string; qtd: number; cobrado: number; proposto: number; dif: number; ufs: Map<string, UFNode> };
+
+    // Build deadline lookup by UF+CapInt
+    const getCarrierDeadline = (uf: string, regiao: string) => {
+      const capital = STATE_CAPITALS[uf];
+      const isCapital = regiao === "Capital";
+      const filterFn = (d: { uf: string; cidade_corrigida: string }) =>
+        d.uf === uf && (isCapital ? d.cidade_corrigida === capital : d.cidade_corrigida !== capital);
+      const rRows = deadlinesRealized.filter(filterFn);
+      const pRows = deadlinesProposed.filter(filterFn);
+      return {
+        realizado: rRows.length > 0 ? rRows.reduce((s, d) => s + d.prazo_dias, 0) / rRows.length : null,
+        proposto: pRows.length > 0 ? pRows.reduce((s, d) => s + d.prazo_dias, 0) / pRows.length : null,
+      };
+    };
     const macroMap = new Map<string, MacroNode>();
     for (const r of filtered) {
       const macro = getMacro(r.shipment_uf);
@@ -510,33 +524,40 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
       macroMap.set(macro, mNode);
     }
     // Filter: only keep capint rows where dif < 0 (proposta mais cara), then prune empty UFs/macros
-    const result: { regiao: string; qtd: number; pctDif: number; ufs: { uf: string; qtd: number; pctDif: number; capint: { regiao: string; qtd: number; pctDif: number }[] }[] }[] = [];
+    type CapIntResult = { regiao: string; qtd: number; pctDif: number; prazoReal: number | null; prazoProp: number | null };
+    type UFResult = { uf: string; qtd: number; pctDif: number; prazoReal: number | null; prazoProp: number | null; capint: CapIntResult[] };
+    type MacroResult = { regiao: string; qtd: number; pctDif: number; prazoReal: number | null; prazoProp: number | null; ufs: UFResult[] };
+    const result: MacroResult[] = [];
     for (const m of macroMap.values()) {
-      const ufs: typeof result[0]["ufs"] = [];
+      const ufs: UFResult[] = [];
       for (const u of m.ufs.values()) {
-        const caps = Array.from(u.capint.values())
-          .filter(c => c.dif < 0) // only losses
-          .map(c => ({ regiao: c.regiao, qtd: c.qtd, pctDif: c.proposto > 0 ? (c.dif / c.proposto) * 100 : 0 }))
+        const caps: CapIntResult[] = Array.from(u.capint.values())
+          .filter(c => c.dif < 0)
+          .map(c => {
+            const dl = getCarrierDeadline(u.uf, c.regiao);
+            return { regiao: c.regiao, qtd: c.qtd, pctDif: c.proposto > 0 ? (c.dif / c.proposto) * 100 : 0, prazoReal: dl.realizado, prazoProp: dl.proposto };
+          })
           .sort((a, b) => a.pctDif - b.pctDif);
         if (caps.length === 0) continue;
         const lossQtd = caps.reduce((s, c) => s + c.qtd, 0);
-        // UF-level % is weighted from the loss sub-rows only
         const lossCobrado = Array.from(u.capint.values()).filter(c => c.dif < 0).reduce((s, c) => s + c.cobrado, 0);
         const lossProposto = Array.from(u.capint.values()).filter(c => c.dif < 0).reduce((s, c) => s + c.proposto, 0);
         const lossDif = lossCobrado - lossProposto;
-        ufs.push({ uf: u.uf, qtd: lossQtd, pctDif: lossProposto > 0 ? (lossDif / lossProposto) * 100 : 0, capint: caps });
+        // UF deadline: average across all deadlines for this UF
+        const dlUF = getDeadlineUF(u.uf);
+        ufs.push({ uf: u.uf, qtd: lossQtd, pctDif: lossProposto > 0 ? (lossDif / lossProposto) * 100 : 0, prazoReal: dlUF.realizado, prazoProp: dlUF.proposto, capint: caps });
       }
       if (ufs.length === 0) continue;
       ufs.sort((a, b) => a.pctDif - b.pctDif);
       const macroLossQtd = ufs.reduce((s, u) => s + u.qtd, 0);
-      // Macro-level aggregated %
       const mLossCobrado = Array.from(m.ufs.values()).flatMap(u => Array.from(u.capint.values())).filter(c => c.dif < 0).reduce((s, c) => s + c.cobrado, 0);
       const mLossProposto = Array.from(m.ufs.values()).flatMap(u => Array.from(u.capint.values())).filter(c => c.dif < 0).reduce((s, c) => s + c.proposto, 0);
       const mLossDif = mLossCobrado - mLossProposto;
-      result.push({ regiao: m.regiao, qtd: macroLossQtd, pctDif: mLossProposto > 0 ? (mLossDif / mLossProposto) * 100 : 0, ufs });
+      const dlMacro = getDeadlineMacro(m.regiao);
+      result.push({ regiao: m.regiao, qtd: macroLossQtd, pctDif: mLossProposto > 0 ? (mLossDif / mLossProposto) * 100 : 0, prazoReal: dlMacro.realizado, prazoProp: dlMacro.proposto, ufs });
     }
     return result.sort((a, b) => a.pctDif - b.pctDif);
-  }, [filtered]);
+  }, [filtered, deadlinesRealized, deadlinesProposed]);
 
   const toggleMacro = (macro: string) => {
     setExpandedMacros(prev => {
@@ -1405,7 +1426,9 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                     <TableHead className="w-8" />
                     <TableHead className="font-semibold">Região / UF / Categoria</TableHead>
                     <TableHead className="text-right font-semibold">Qtd NF</TableHead>
-                    <TableHead className="text-right font-semibold">% Diferença</TableHead>
+                    <TableHead className="text-right font-semibold">% Dif Frete</TableHead>
+                    <TableHead className="text-right font-semibold">Prazo Real</TableHead>
+                    <TableHead className="text-right font-semibold">Prazo Prop.</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1418,6 +1441,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                           <TableCell className="font-bold">{macro.regiao}</TableCell>
                           <TableCell className="text-right tabular-nums">{macro.qtd.toLocaleString("pt-BR")}</TableCell>
                           <TableCell className="text-right font-bold tabular-nums text-destructive">{macro.pctDif.toFixed(1)}%</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">{macro.prazoReal != null ? `${macro.prazoReal.toFixed(1)}d` : "—"}</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">{macro.prazoProp != null ? `${macro.prazoProp.toFixed(1)}d` : "—"}</TableCell>
                         </TableRow>
                         {macroExpanded && macro.ufs.map(uf => {
                           const ufExpanded = expandedCarrierUFs.has(uf.uf);
@@ -1428,6 +1453,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                                 <TableCell className="pl-8 font-semibold">{uf.uf}</TableCell>
                                 <TableCell className="text-right tabular-nums">{uf.qtd.toLocaleString("pt-BR")}</TableCell>
                                 <TableCell className="text-right font-semibold tabular-nums text-destructive">{uf.pctDif.toFixed(1)}%</TableCell>
+                                <TableCell className="text-right tabular-nums text-muted-foreground">{uf.prazoReal != null ? `${uf.prazoReal.toFixed(1)}d` : "—"}</TableCell>
+                                <TableCell className="text-right tabular-nums text-muted-foreground">{uf.prazoProp != null ? `${uf.prazoProp.toFixed(1)}d` : "—"}</TableCell>
                               </TableRow>
                               {ufExpanded && uf.capint.map(ci => (
                                 <TableRow key={`${uf.uf}-${ci.regiao}`} className="bg-muted/5 text-xs">
@@ -1437,6 +1464,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                                   </TableCell>
                                   <TableCell className="text-right tabular-nums">{ci.qtd.toLocaleString("pt-BR")}</TableCell>
                                   <TableCell className="text-right tabular-nums text-destructive">{ci.pctDif.toFixed(1)}%</TableCell>
+                                  <TableCell className="text-right tabular-nums text-muted-foreground">{ci.prazoReal != null ? `${ci.prazoReal.toFixed(1)}d` : "—"}</TableCell>
+                                  <TableCell className="text-right tabular-nums text-muted-foreground">{ci.prazoProp != null ? `${ci.prazoProp.toFixed(1)}d` : "—"}</TableCell>
                                 </TableRow>
                               ))}
                             </Fragment>
