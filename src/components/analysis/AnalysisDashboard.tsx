@@ -12,7 +12,7 @@ import {
   Download, TrendingUp, TrendingDown, ChevronDown, ChevronRight,
   AlertTriangle, CheckCircle2, ShieldAlert, BarChart3, Search,
   DollarSign, Scale, Percent, FileText, ArrowUpDown, Clock,
-  MapPin, Weight, Target, Activity, Eye, EyeOff,
+  MapPin, Weight, Target, Activity, Eye, EyeOff, Send,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -140,6 +140,8 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   const [drillSortCol, setDrillSortCol] = useState<string>("shipment_peso");
   const [drillSortDir, setDrillSortDir] = useState<"asc" | "desc">("desc");
   const [hideSensitive, setHideSensitive] = useState(false);
+  const [showCarrierView, setShowCarrierView] = useState(false);
+  const [expandedMacros, setExpandedMacros] = useState<Set<string>>(new Set());
   const [deadlinesRealized, setDeadlinesRealized] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
   const [deadlinesProposed, setDeadlinesProposed] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
 
@@ -481,6 +483,35 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
     return { avgReal, avgProp, cidadesReal: rCount, cidadesProp: pCount, faster, slower, equal };
   }, [deadlinesRealized, deadlinesProposed, hasDeadlines]);
 
+  const carrierPivot = useMemo(() => {
+    // Group by macro region, then by UF within each region
+    const macroMap = new Map<string, { regiao: string; qtd: number; cobrado: number; proposto: number; dif: number; peso: number; ufs: Map<string, { uf: string; qtd: number; cobrado: number; proposto: number; dif: number; peso: number }> }>();
+    for (const r of filtered) {
+      const macro = getMacro(r.shipment_uf);
+      let macroAgg = macroMap.get(macro);
+      if (!macroAgg) macroAgg = { regiao: macro, qtd: 0, cobrado: 0, proposto: 0, dif: 0, peso: 0, ufs: new Map() };
+      macroAgg.qtd++; macroAgg.cobrado += r.valor_cobrado ?? 0; macroAgg.proposto += r.frete_final ?? 0;
+      macroAgg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0); macroAgg.peso += r.shipment_peso;
+      let ufAgg = macroAgg.ufs.get(r.shipment_uf);
+      if (!ufAgg) ufAgg = { uf: r.shipment_uf, qtd: 0, cobrado: 0, proposto: 0, dif: 0, peso: 0 };
+      ufAgg.qtd++; ufAgg.cobrado += r.valor_cobrado ?? 0; ufAgg.proposto += r.frete_final ?? 0;
+      ufAgg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0); ufAgg.peso += r.shipment_peso;
+      macroAgg.ufs.set(r.shipment_uf, ufAgg);
+      macroMap.set(macro, macroAgg);
+    }
+    return Array.from(macroMap.values())
+      .map(m => ({ ...m, ufs: Array.from(m.ufs.values()).sort((a, b) => a.dif - b.dif) }))
+      .sort((a, b) => a.dif - b.dif);
+  }, [filtered]);
+
+  const toggleMacro = (macro: string) => {
+    setExpandedMacros(prev => {
+      const next = new Set(prev);
+      next.has(macro) ? next.delete(macro) : next.add(macro);
+      return next;
+    });
+  };
+
   const exportCSV = () => {
     const lines = ["UF;Região Macro;Capital/Interior;Qtd NF;Valor Cobrado;Valor Proposta;Diferença;% Dif;R$/kg Hoje;R$/kg Proposta;Peso Médio;Win Rate"];
     for (const uf of ufPivot) {
@@ -556,8 +587,11 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
             {hideSensitive ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             {hideSensitive ? "Mostrar valores" : "Ocultar valores"}
           </Button>
-          <Button variant="outline" size="sm" className="ml-auto gap-2" onClick={exportCSV}>
+          <Button variant="outline" size="sm" className="gap-2" onClick={exportCSV}>
             <Download className="h-4 w-4" /> Exportar CSV
+          </Button>
+          <Button size="sm" className="ml-auto gap-2" onClick={() => setShowCarrierView(true)}>
+            <Send className="h-4 w-4" /> Enviar à Transportadora
           </Button>
         </CardContent>
       </Card>
@@ -1283,6 +1317,71 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
               </Table>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ Carrier View Dialog ═══ */}
+      <Dialog open={showCarrierView} onOpenChange={setShowCarrierView}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5 text-primary" />
+              Visão para Transportadora — Por Macro Região
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/30">
+                  <TableHead className="w-8" />
+                  <TableHead className="font-semibold">Região / UF</TableHead>
+                  <TableHead className="text-right font-semibold">Qtd NF</TableHead>
+                  <TableHead className="text-right font-semibold">Proposta (R$)</TableHead>
+                  <TableHead className="text-right font-semibold">% Diferença</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {carrierPivot.map(macro => {
+                  const macroPct = macro.proposto > 0 ? (macro.dif / macro.proposto) * 100 : 0;
+                  const expanded = expandedMacros.has(macro.regiao);
+                  return (
+                    <Fragment key={macro.regiao}>
+                      <TableRow className="cursor-pointer font-semibold hover:bg-muted/50" onClick={() => toggleMacro(macro.regiao)}>
+                        <TableCell className="w-8">{expanded ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}</TableCell>
+                        <TableCell className="font-bold">{macro.regiao}</TableCell>
+                        <TableCell className="text-right tabular-nums">{macro.qtd.toLocaleString("pt-BR")}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatBRL(macro.proposto)}</TableCell>
+                        <TableCell className={`text-right font-bold tabular-nums ${difColor(macro.dif)}`}>{macroPct >= 0 ? "+" : ""}{macroPct.toFixed(1)}%</TableCell>
+                      </TableRow>
+                      {expanded && macro.ufs.map(uf => {
+                        const ufPct = uf.proposto > 0 ? (uf.dif / uf.proposto) * 100 : 0;
+                        return (
+                          <TableRow key={uf.uf} className="bg-muted/10 text-sm">
+                            <TableCell />
+                            <TableCell className="pl-8">{uf.uf}</TableCell>
+                            <TableCell className="text-right tabular-nums">{uf.qtd.toLocaleString("pt-BR")}</TableCell>
+                            <TableCell className="text-right tabular-nums">{formatBRL(uf.proposto)}</TableCell>
+                            <TableCell className={`text-right font-semibold tabular-nums ${difColor(uf.dif)}`}>{ufPct >= 0 ? "+" : ""}{ufPct.toFixed(1)}%</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </Fragment>
+                  );
+                })}
+                {/* Total row */}
+                <TableRow className="border-t-2 border-primary/20 bg-muted/40 font-bold">
+                  <TableCell />
+                  <TableCell className="text-primary">TOTAL</TableCell>
+                  <TableCell className="text-right tabular-nums">{stats.qtdNF.toLocaleString("pt-BR")}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatBRL(stats.totalProposto)}</TableCell>
+                  <TableCell className={`text-right font-bold tabular-nums ${difColor(stats.totalDif)}`}>{stats.pctDifGeral >= 0 ? "+" : ""}{stats.pctDifGeral.toFixed(1)}%</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+            <p className="rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              📊 % Diferença = (Pago − Proposta) / Proposta. Positivo = proposta mais barata que o atual.
+            </p>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
