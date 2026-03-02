@@ -484,24 +484,57 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   }, [deadlinesRealized, deadlinesProposed, hasDeadlines]);
 
   const carrierPivot = useMemo(() => {
-    // Group by macro region, then by UF within each region
-    const macroMap = new Map<string, { regiao: string; qtd: number; cobrado: number; proposto: number; dif: number; peso: number; ufs: Map<string, { uf: string; qtd: number; cobrado: number; proposto: number; dif: number; peso: number }> }>();
+    // Group by macro → UF → Capital/Interior, only where proposta > cobrado (loss)
+    type CapInt = { regiao: string; qtd: number; cobrado: number; proposto: number; dif: number };
+    type UFNode = { uf: string; qtd: number; cobrado: number; proposto: number; dif: number; capint: Map<string, CapInt> };
+    type MacroNode = { regiao: string; qtd: number; cobrado: number; proposto: number; dif: number; ufs: Map<string, UFNode> };
+    const macroMap = new Map<string, MacroNode>();
     for (const r of filtered) {
       const macro = getMacro(r.shipment_uf);
-      let macroAgg = macroMap.get(macro);
-      if (!macroAgg) macroAgg = { regiao: macro, qtd: 0, cobrado: 0, proposto: 0, dif: 0, peso: 0, ufs: new Map() };
-      macroAgg.qtd++; macroAgg.cobrado += r.valor_cobrado ?? 0; macroAgg.proposto += r.frete_final ?? 0;
-      macroAgg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0); macroAgg.peso += r.shipment_peso;
-      let ufAgg = macroAgg.ufs.get(r.shipment_uf);
-      if (!ufAgg) ufAgg = { uf: r.shipment_uf, qtd: 0, cobrado: 0, proposto: 0, dif: 0, peso: 0 };
-      ufAgg.qtd++; ufAgg.cobrado += r.valor_cobrado ?? 0; ufAgg.proposto += r.frete_final ?? 0;
-      ufAgg.dif += (r.valor_cobrado ?? 0) - (r.frete_final ?? 0); ufAgg.peso += r.shipment_peso;
-      macroAgg.ufs.set(r.shipment_uf, ufAgg);
-      macroMap.set(macro, macroAgg);
+      const ci = getCapInt(r.shipment_uf, r.shipment_cidade);
+      let mNode = macroMap.get(macro);
+      if (!mNode) mNode = { regiao: macro, qtd: 0, cobrado: 0, proposto: 0, dif: 0, ufs: new Map() };
+      let uNode = mNode.ufs.get(r.shipment_uf);
+      if (!uNode) uNode = { uf: r.shipment_uf, qtd: 0, cobrado: 0, proposto: 0, dif: 0, capint: new Map() };
+      let cNode = uNode.capint.get(ci);
+      if (!cNode) cNode = { regiao: ci, qtd: 0, cobrado: 0, proposto: 0, dif: 0 };
+      const cobrado = r.valor_cobrado ?? 0;
+      const proposto = r.frete_final ?? 0;
+      const d = cobrado - proposto;
+      cNode.qtd++; cNode.cobrado += cobrado; cNode.proposto += proposto; cNode.dif += d;
+      uNode.capint.set(ci, cNode);
+      uNode.qtd++; uNode.cobrado += cobrado; uNode.proposto += proposto; uNode.dif += d;
+      mNode.ufs.set(r.shipment_uf, uNode);
+      mNode.qtd++; mNode.cobrado += cobrado; mNode.proposto += proposto; mNode.dif += d;
+      macroMap.set(macro, mNode);
     }
-    return Array.from(macroMap.values())
-      .map(m => ({ ...m, ufs: Array.from(m.ufs.values()).sort((a, b) => a.dif - b.dif) }))
-      .sort((a, b) => a.dif - b.dif);
+    // Filter: only keep capint rows where dif < 0 (proposta mais cara), then prune empty UFs/macros
+    const result: { regiao: string; qtd: number; pctDif: number; ufs: { uf: string; qtd: number; pctDif: number; capint: { regiao: string; qtd: number; pctDif: number }[] }[] }[] = [];
+    for (const m of macroMap.values()) {
+      const ufs: typeof result[0]["ufs"] = [];
+      for (const u of m.ufs.values()) {
+        const caps = Array.from(u.capint.values())
+          .filter(c => c.dif < 0) // only losses
+          .map(c => ({ regiao: c.regiao, qtd: c.qtd, pctDif: c.proposto > 0 ? (c.dif / c.proposto) * 100 : 0 }))
+          .sort((a, b) => a.pctDif - b.pctDif);
+        if (caps.length === 0) continue;
+        const lossQtd = caps.reduce((s, c) => s + c.qtd, 0);
+        // UF-level % is weighted from the loss sub-rows only
+        const lossCobrado = Array.from(u.capint.values()).filter(c => c.dif < 0).reduce((s, c) => s + c.cobrado, 0);
+        const lossProposto = Array.from(u.capint.values()).filter(c => c.dif < 0).reduce((s, c) => s + c.proposto, 0);
+        const lossDif = lossCobrado - lossProposto;
+        ufs.push({ uf: u.uf, qtd: lossQtd, pctDif: lossProposto > 0 ? (lossDif / lossProposto) * 100 : 0, capint: caps });
+      }
+      if (ufs.length === 0) continue;
+      ufs.sort((a, b) => a.pctDif - b.pctDif);
+      const macroLossQtd = ufs.reduce((s, u) => s + u.qtd, 0);
+      // Macro-level aggregated %
+      const mLossCobrado = Array.from(m.ufs.values()).flatMap(u => Array.from(u.capint.values())).filter(c => c.dif < 0).reduce((s, c) => s + c.cobrado, 0);
+      const mLossProposto = Array.from(m.ufs.values()).flatMap(u => Array.from(u.capint.values())).filter(c => c.dif < 0).reduce((s, c) => s + c.proposto, 0);
+      const mLossDif = mLossCobrado - mLossProposto;
+      result.push({ regiao: m.regiao, qtd: macroLossQtd, pctDif: mLossProposto > 0 ? (mLossDif / mLossProposto) * 100 : 0, ufs });
+    }
+    return result.sort((a, b) => a.pctDif - b.pctDif);
   }, [filtered]);
 
   const toggleMacro = (macro: string) => {
@@ -1322,66 +1355,71 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
 
       {/* ═══ Carrier View Dialog ═══ */}
       <Dialog open={showCarrierView} onOpenChange={setShowCarrierView}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Send className="h-5 w-5 text-primary" />
-              Visão para Transportadora — Por Macro Região
+              Visão para Transportadora — Ajustes Necessários
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30">
-                  <TableHead className="w-8" />
-                  <TableHead className="font-semibold">Região / UF</TableHead>
-                  <TableHead className="text-right font-semibold">Qtd NF</TableHead>
-                  <TableHead className="text-right font-semibold">Proposta (R$)</TableHead>
-                  <TableHead className="text-right font-semibold">% Diferença</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {carrierPivot.map(macro => {
-                  const macroPct = macro.proposto > 0 ? (macro.dif / macro.proposto) * 100 : 0;
-                  const expanded = expandedMacros.has(macro.regiao);
-                  return (
-                    <Fragment key={macro.regiao}>
-                      <TableRow className="cursor-pointer font-semibold hover:bg-muted/50" onClick={() => toggleMacro(macro.regiao)}>
-                        <TableCell className="w-8">{expanded ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}</TableCell>
-                        <TableCell className="font-bold">{macro.regiao}</TableCell>
-                        <TableCell className="text-right tabular-nums">{macro.qtd.toLocaleString("pt-BR")}</TableCell>
-                        <TableCell className="text-right tabular-nums">{formatBRL(macro.proposto)}</TableCell>
-                        <TableCell className={`text-right font-bold tabular-nums ${difColor(macro.dif)}`}>{macroPct >= 0 ? "+" : ""}{macroPct.toFixed(1)}%</TableCell>
-                      </TableRow>
-                      {expanded && macro.ufs.map(uf => {
-                        const ufPct = uf.proposto > 0 ? (uf.dif / uf.proposto) * 100 : 0;
-                        return (
-                          <TableRow key={uf.uf} className="bg-muted/10 text-sm">
-                            <TableCell />
-                            <TableCell className="pl-8">{uf.uf}</TableCell>
-                            <TableCell className="text-right tabular-nums">{uf.qtd.toLocaleString("pt-BR")}</TableCell>
-                            <TableCell className="text-right tabular-nums">{formatBRL(uf.proposto)}</TableCell>
-                            <TableCell className={`text-right font-semibold tabular-nums ${difColor(uf.dif)}`}>{ufPct >= 0 ? "+" : ""}{ufPct.toFixed(1)}%</TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </Fragment>
-                  );
-                })}
-                {/* Total row */}
-                <TableRow className="border-t-2 border-primary/20 bg-muted/40 font-bold">
-                  <TableCell />
-                  <TableCell className="text-primary">TOTAL</TableCell>
-                  <TableCell className="text-right tabular-nums">{stats.qtdNF.toLocaleString("pt-BR")}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatBRL(stats.totalProposto)}</TableCell>
-                  <TableCell className={`text-right font-bold tabular-nums ${difColor(stats.totalDif)}`}>{stats.pctDifGeral >= 0 ? "+" : ""}{stats.pctDifGeral.toFixed(1)}%</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-            <p className="rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              📊 % Diferença = (Pago − Proposta) / Proposta. Positivo = proposta mais barata que o atual.
-            </p>
-          </div>
+          {carrierPivot.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <CheckCircle2 className="h-10 w-10 text-emerald-500 mb-3" />
+              <p className="text-sm font-medium">Nenhuma região com proposta mais cara!</p>
+              <p className="text-xs text-muted-foreground mt-1">A proposta é competitiva em todas as regiões.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30">
+                    <TableHead className="w-8" />
+                    <TableHead className="font-semibold">Região / UF / Categoria</TableHead>
+                    <TableHead className="text-right font-semibold">Qtd NF</TableHead>
+                    <TableHead className="text-right font-semibold">% Diferença</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {carrierPivot.map(macro => {
+                    const expanded = expandedMacros.has(macro.regiao);
+                    return (
+                      <Fragment key={macro.regiao}>
+                        <TableRow className="cursor-pointer font-semibold hover:bg-muted/50" onClick={() => toggleMacro(macro.regiao)}>
+                          <TableCell className="w-8">{expanded ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}</TableCell>
+                          <TableCell className="font-bold">{macro.regiao}</TableCell>
+                          <TableCell className="text-right tabular-nums">{macro.qtd.toLocaleString("pt-BR")}</TableCell>
+                          <TableCell className="text-right font-bold tabular-nums text-destructive">{macro.pctDif.toFixed(1)}%</TableCell>
+                        </TableRow>
+                        {expanded && macro.ufs.map(uf => (
+                          <Fragment key={uf.uf}>
+                            <TableRow className="bg-muted/10 text-sm font-medium">
+                              <TableCell />
+                              <TableCell className="pl-8 font-semibold">{uf.uf}</TableCell>
+                              <TableCell className="text-right tabular-nums">{uf.qtd.toLocaleString("pt-BR")}</TableCell>
+                              <TableCell className="text-right font-semibold tabular-nums text-destructive">{uf.pctDif.toFixed(1)}%</TableCell>
+                            </TableRow>
+                            {uf.capint.map(ci => (
+                              <TableRow key={`${uf.uf}-${ci.regiao}`} className="bg-muted/5 text-xs">
+                                <TableCell />
+                                <TableCell className="pl-14">
+                                  <Badge variant="outline" className="border-dashed text-[10px]">{ci.regiao}</Badge>
+                                </TableCell>
+                                <TableCell className="text-right tabular-nums">{ci.qtd.toLocaleString("pt-BR")}</TableCell>
+                                <TableCell className="text-right tabular-nums text-destructive">{ci.pctDif.toFixed(1)}%</TableCell>
+                              </TableRow>
+                            ))}
+                          </Fragment>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+              <p className="rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                🎯 Apenas regiões onde a proposta é mais cara que o valor pago atualmente. % negativo = proposta mais cara.
+              </p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
