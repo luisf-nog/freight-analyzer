@@ -2,9 +2,11 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { Play, Loader2, CheckCircle2 } from "lucide-react";
+import { Play, Loader2, CheckCircle2, Percent } from "lucide-react";
 
 interface Props {
   studyId: string;
@@ -18,6 +20,7 @@ const BATCH_SIZE = 500;
 export function RunSimulation({ studyId, rateCount, shipmentCount, onComplete }: Props) {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [marginPct, setMarginPct] = useState(0);
   const [result, setResult] = useState<{ processed: number; matched: number; notFound: number } | null>(null);
 
   const canRun = rateCount > 0 && shipmentCount > 0;
@@ -41,6 +44,7 @@ export function RunSimulation({ studyId, rateCount, shipmentCount, onComplete }:
             batch_offset: offset,
             batch_size: BATCH_SIZE,
             is_first_batch: isFirst,
+            margin_pct: marginPct / 100,
           },
         });
         if (error) throw error;
@@ -82,6 +86,27 @@ export function RunSimulation({ studyId, rateCount, shipmentCount, onComplete }:
             A simulação aplica a tabela de tarifas importada sobre cada embarque do histórico,
             calculando o frete proposto com todos os componentes (faixas de peso, ADV, GRIS, pedágio, ICMS, TRT, etc).
           </p>
+          <div className="space-y-2 max-w-xs">
+            <Label htmlFor="margin" className="flex items-center gap-1.5 text-sm">
+              <Percent className="h-3.5 w-3.5" />
+              Margem de segurança (%)
+            </Label>
+            <Input
+              id="margin"
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              value={marginPct}
+              onChange={(e) => setMarginPct(Number(e.target.value))}
+              disabled={running}
+              placeholder="Ex: 5"
+            />
+            <p className="text-xs text-muted-foreground">
+              Percentual adicionado ao frete calculado para cobrir taxas pontuais (TDE, TDA, TRT, etc).
+            </p>
+          </div>
+
           {!canRun && (
             <p className="text-sm text-destructive">
               Importe a tabela da transportadora e os fretes pagos antes de rodar a simulação.
