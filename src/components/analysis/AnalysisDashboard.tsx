@@ -142,6 +142,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
   const [hideSensitive, setHideSensitive] = useState(false);
   const [showCarrierView, setShowCarrierView] = useState(false);
   const [expandedMacros, setExpandedMacros] = useState<Set<string>>(new Set());
+  const [expandedCarrierUFs, setExpandedCarrierUFs] = useState<Set<string>>(new Set());
   const [deadlinesRealized, setDeadlinesRealized] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
   const [deadlinesProposed, setDeadlinesProposed] = useState<Array<{ uf: string; cidade_corrigida: string; prazo_dias: number }>>([]);
 
@@ -543,6 +544,26 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
       next.has(macro) ? next.delete(macro) : next.add(macro);
       return next;
     });
+  };
+
+  const toggleCarrierUF = (uf: string) => {
+    setExpandedCarrierUFs(prev => {
+      const next = new Set(prev);
+      next.has(uf) ? next.delete(uf) : next.add(uf);
+      return next;
+    });
+  };
+
+  const expandAllCarrier = () => {
+    const allMacros = new Set(carrierPivot.map(m => m.regiao));
+    const allUFs = new Set(carrierPivot.flatMap(m => m.ufs.map(u => u.uf)));
+    setExpandedMacros(allMacros);
+    setExpandedCarrierUFs(allUFs);
+  };
+
+  const collapseAllCarrier = () => {
+    setExpandedMacros(new Set());
+    setExpandedCarrierUFs(new Set());
   };
 
   const exportCSV = () => {
@@ -1355,7 +1376,7 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
 
       {/* ═══ Carrier View Dialog ═══ */}
       <Dialog open={showCarrierView} onOpenChange={setShowCarrierView}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Send className="h-5 w-5 text-primary" />
@@ -1369,7 +1390,15 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
               <p className="text-xs text-muted-foreground mt-1">A proposta é competitiva em todas as regiões.</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 flex-1 overflow-auto">
+              <div className="flex gap-2 mb-2">
+                <Button variant="outline" size="sm" onClick={expandAllCarrier} className="text-xs gap-1">
+                  <ChevronDown className="h-3 w-3" /> Expandir tudo
+                </Button>
+                <Button variant="outline" size="sm" onClick={collapseAllCarrier} className="text-xs gap-1">
+                  <ChevronRight className="h-3 w-3" /> Recolher tudo
+                </Button>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30">
@@ -1381,35 +1410,38 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
                 </TableHeader>
                 <TableBody>
                   {carrierPivot.map(macro => {
-                    const expanded = expandedMacros.has(macro.regiao);
+                    const macroExpanded = expandedMacros.has(macro.regiao);
                     return (
                       <Fragment key={macro.regiao}>
                         <TableRow className="cursor-pointer font-semibold hover:bg-muted/50" onClick={() => toggleMacro(macro.regiao)}>
-                          <TableCell className="w-8">{expanded ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}</TableCell>
+                          <TableCell className="w-8">{macroExpanded ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}</TableCell>
                           <TableCell className="font-bold">{macro.regiao}</TableCell>
                           <TableCell className="text-right tabular-nums">{macro.qtd.toLocaleString("pt-BR")}</TableCell>
                           <TableCell className="text-right font-bold tabular-nums text-destructive">{macro.pctDif.toFixed(1)}%</TableCell>
                         </TableRow>
-                        {expanded && macro.ufs.map(uf => (
-                          <Fragment key={uf.uf}>
-                            <TableRow className="bg-muted/10 text-sm font-medium">
-                              <TableCell />
-                              <TableCell className="pl-8 font-semibold">{uf.uf}</TableCell>
-                              <TableCell className="text-right tabular-nums">{uf.qtd.toLocaleString("pt-BR")}</TableCell>
-                              <TableCell className="text-right font-semibold tabular-nums text-destructive">{uf.pctDif.toFixed(1)}%</TableCell>
-                            </TableRow>
-                            {uf.capint.map(ci => (
-                              <TableRow key={`${uf.uf}-${ci.regiao}`} className="bg-muted/5 text-xs">
-                                <TableCell />
-                                <TableCell className="pl-14">
-                                  <Badge variant="outline" className="border-dashed text-[10px]">{ci.regiao}</Badge>
-                                </TableCell>
-                                <TableCell className="text-right tabular-nums">{ci.qtd.toLocaleString("pt-BR")}</TableCell>
-                                <TableCell className="text-right tabular-nums text-destructive">{ci.pctDif.toFixed(1)}%</TableCell>
+                        {macroExpanded && macro.ufs.map(uf => {
+                          const ufExpanded = expandedCarrierUFs.has(uf.uf);
+                          return (
+                            <Fragment key={uf.uf}>
+                              <TableRow className="bg-muted/10 text-sm font-medium cursor-pointer hover:bg-muted/20" onClick={() => toggleCarrierUF(uf.uf)}>
+                                <TableCell className="pl-6">{ufExpanded ? <ChevronDown className="h-3.5 w-3.5 text-primary" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}</TableCell>
+                                <TableCell className="pl-8 font-semibold">{uf.uf}</TableCell>
+                                <TableCell className="text-right tabular-nums">{uf.qtd.toLocaleString("pt-BR")}</TableCell>
+                                <TableCell className="text-right font-semibold tabular-nums text-destructive">{uf.pctDif.toFixed(1)}%</TableCell>
                               </TableRow>
-                            ))}
-                          </Fragment>
-                        ))}
+                              {ufExpanded && uf.capint.map(ci => (
+                                <TableRow key={`${uf.uf}-${ci.regiao}`} className="bg-muted/5 text-xs">
+                                  <TableCell />
+                                  <TableCell className="pl-14">
+                                    <Badge variant="outline" className="border-dashed text-[10px]">{ci.regiao}</Badge>
+                                  </TableCell>
+                                  <TableCell className="text-right tabular-nums">{ci.qtd.toLocaleString("pt-BR")}</TableCell>
+                                  <TableCell className="text-right tabular-nums text-destructive">{ci.pctDif.toFixed(1)}%</TableCell>
+                                </TableRow>
+                              ))}
+                            </Fragment>
+                          );
+                        })}
                       </Fragment>
                     );
                   })}
