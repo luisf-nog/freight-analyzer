@@ -50,7 +50,7 @@ export function ShipmentImport({ studyId, shipmentCount, onImported }: Props) {
         .from("shipments_paid")
         .select("id")
         .eq("study_id", studyId)
-        .limit(500);
+        .limit(50);
       if (!ids || ids.length === 0) {
         deleteMore = false;
       } else {
@@ -82,7 +82,7 @@ export function ShipmentImport({ studyId, shipmentCount, onImported }: Props) {
   const handleDelete = async () => {
     let more = true;
     while (more) {
-      const { data: ids } = await supabase.from("shipments_paid").select("id").eq("study_id", studyId).limit(500);
+      const { data: ids } = await supabase.from("shipments_paid").select("id").eq("study_id", studyId).limit(50);
       if (!ids || ids.length === 0) { more = false; } else {
         await supabase.from("shipments_paid").delete().in("id", ids.map(r => r.id));
       }
