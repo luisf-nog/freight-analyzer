@@ -41,8 +41,23 @@ export function CarrierRateImport({ studyId, rateCount, onImported }: Props) {
     if (!result || result.data.length === 0) return;
     setUploading(true);
 
-    // Delete existing rates for this study
-    await supabase.from("carrier_rates").delete().eq("study_id", studyId);
+    // Delete existing rates in batches to avoid timeout
+    let deleteMore = true;
+    while (deleteMore) {
+      const { data: ids } = await supabase
+        .from("carrier_rates")
+        .select("id")
+        .eq("study_id", studyId)
+        .limit(500);
+      if (!ids || ids.length === 0) {
+        deleteMore = false;
+      } else {
+        await supabase
+          .from("carrier_rates")
+          .delete()
+          .in("id", ids.map(r => r.id));
+      }
+    }
 
     // Batch insert (500 at a time)
     const BATCH = 500;
@@ -64,7 +79,13 @@ export function CarrierRateImport({ studyId, rateCount, onImported }: Props) {
   };
 
   const handleDelete = async () => {
-    await supabase.from("carrier_rates").delete().eq("study_id", studyId);
+    let more = true;
+    while (more) {
+      const { data: ids } = await supabase.from("carrier_rates").select("id").eq("study_id", studyId).limit(500);
+      if (!ids || ids.length === 0) { more = false; } else {
+        await supabase.from("carrier_rates").delete().in("id", ids.map(r => r.id));
+      }
+    }
     toast({ title: "Tarifas excluídas" });
     onImported();
   };
