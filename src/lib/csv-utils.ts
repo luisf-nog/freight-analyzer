@@ -297,8 +297,12 @@ export function parseCarrierRateCSV(input: string | string[][]): ParseResult<Rec
         if (num === null && rawVal.trim() !== "") {
           errors.push({ row: r + 1, column: dbColumn, value: rawVal, message: "Valor numérico inválido" });
         }
-        // faixa_100/150/200 should stay null when blank, not default to 0
-        record[dbColumn] = nullableFaixas.has(dbColumn) ? (num ?? null) : (num ?? 0);
+        // faixa_100/150/200 should stay null when blank OR zero (a R$0 rate makes no sense)
+        if (nullableFaixas.has(dbColumn)) {
+          record[dbColumn] = (num === null || num === 0) ? null : num;
+        } else {
+          record[dbColumn] = num ?? 0;
+        }
       }
     }
 
