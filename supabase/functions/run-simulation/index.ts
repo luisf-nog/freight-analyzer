@@ -49,22 +49,43 @@ interface Shipment {
   valor_cobrado: number;
 }
 
+// Treat 0 as null for optional weight tiers (a R$0 rate is invalid)
+function nonZero(v: number | null): number | null {
+  return (v != null && v !== 0) ? v : null;
+}
+
 function getFreteBasePeso(rate: CarrierRate, peso: number): number {
+  const f100 = nonZero(rate.faixa_100);
+  const f150 = nonZero(rate.faixa_150);
+  const f200 = nonZero(rate.faixa_200);
+  const exRate = rate.frete_kg_ex_200 ?? 0;
+
   if (peso <= 10) return rate.faixa_10 ?? 0;
   if (peso <= 20) return rate.faixa_20 ?? rate.faixa_10 ?? 0;
   if (peso <= 30) return rate.faixa_30 ?? rate.faixa_20 ?? 0;
   if (peso <= 50) return rate.faixa_50 ?? rate.faixa_30 ?? 0;
   if (peso <= 70) return rate.faixa_70 ?? rate.faixa_50 ?? 0;
 
-  const exRate = rate.frete_kg_ex_200 ?? 0;
-
-  if (rate.faixa_100 != null && peso <= 100) return rate.faixa_100;
-  if (rate.faixa_150 != null && peso <= 150) return rate.faixa_150;
-  if (rate.faixa_200 != null && peso <= 200) return rate.faixa_200;
-
-  if (rate.faixa_200 != null) return rate.faixa_200 + (peso - 200) * exRate;
-  if (rate.faixa_150 != null) return rate.faixa_150 + (peso - 150) * exRate;
-  if (rate.faixa_100 != null) return rate.faixa_100 + (peso - 100) * exRate;
+  // Determine highest available tier and use excedente from there
+  if (f200 != null) {
+    // Full table: 100, 150, 200
+    if (f100 != null && peso <= 100) return f100;
+    if (f150 != null && peso <= 150) return f150;
+    if (peso <= 200) return f200;
+    return f200 + (peso - 200) * exRate;
+  }
+  if (f150 != null) {
+    // Table up to 150
+    if (f100 != null && peso <= 100) return f100;
+    if (peso <= 150) return f150;
+    return f150 + (peso - 150) * exRate;
+  }
+  if (f100 != null) {
+    // Table up to 100 — excedente starts at 100
+    if (peso <= 100) return f100;
+    return f100 + (peso - 100) * exRate;
+  }
+  // No 100/150/200 tiers — excedente starts at 70
   const base70 = rate.faixa_70 ?? rate.faixa_50 ?? 0;
   return base70 + (peso - 70) * exRate;
 }
