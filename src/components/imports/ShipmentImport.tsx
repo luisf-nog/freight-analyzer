@@ -43,7 +43,23 @@ export function ShipmentImport({ studyId, shipmentCount, onImported }: Props) {
     if (!result || result.data.length === 0) return;
     setUploading(true);
 
-    await supabase.from("shipments_paid").delete().eq("study_id", studyId);
+    // Delete existing in batches to avoid timeout
+    let deleteMore = true;
+    while (deleteMore) {
+      const { data: ids } = await supabase
+        .from("shipments_paid")
+        .select("id")
+        .eq("study_id", studyId)
+        .limit(500);
+      if (!ids || ids.length === 0) {
+        deleteMore = false;
+      } else {
+        await supabase
+          .from("shipments_paid")
+          .delete()
+          .in("id", ids.map(r => r.id));
+      }
+    }
 
     const BATCH = 500;
     let errorCount = 0;
@@ -64,7 +80,13 @@ export function ShipmentImport({ studyId, shipmentCount, onImported }: Props) {
   };
 
   const handleDelete = async () => {
-    await supabase.from("shipments_paid").delete().eq("study_id", studyId);
+    let more = true;
+    while (more) {
+      const { data: ids } = await supabase.from("shipments_paid").select("id").eq("study_id", studyId).limit(500);
+      if (!ids || ids.length === 0) { more = false; } else {
+        await supabase.from("shipments_paid").delete().in("id", ids.map(r => r.id));
+      }
+    }
     toast({ title: "Embarques excluídos" });
     onImported();
   };
