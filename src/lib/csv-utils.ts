@@ -282,6 +282,9 @@ export function parseCarrierRateCSV(input: string | string[][]): ParseResult<Rec
 
     const record: Record<string, unknown> = {};
 
+    // Faixas that should remain null when blank (not default to 0)
+    const nullableFaixas = new Set(["faixa_100", "faixa_150", "faixa_200"]);
+
     for (const { csvIndex, dbColumn } of columnMapping) {
       const rawVal = row[csvIndex] ?? "";
 
@@ -294,11 +297,12 @@ export function parseCarrierRateCSV(input: string | string[][]): ParseResult<Rec
         if (num === null && rawVal.trim() !== "") {
           errors.push({ row: r + 1, column: dbColumn, value: rawVal, message: "Valor numérico inválido" });
         }
-        record[dbColumn] = num ?? 0;
+        // faixa_100/150/200 should stay null when blank, not default to 0
+        record[dbColumn] = nullableFaixas.has(dbColumn) ? (num ?? null) : (num ?? 0);
       }
     }
 
-    // Handle nullable faixas
+    // Handle nullable faixas when column doesn't exist in CSV
     for (const f of ["faixa_100", "faixa_150", "faixa_200"]) {
       if (!mappedDbCols.has(f)) {
         record[f] = null;
