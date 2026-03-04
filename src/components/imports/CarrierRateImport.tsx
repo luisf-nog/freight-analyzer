@@ -48,7 +48,7 @@ export function CarrierRateImport({ studyId, rateCount, onImported }: Props) {
         .from("carrier_rates")
         .select("id")
         .eq("study_id", studyId)
-        .limit(500);
+        .limit(50);
       if (!ids || ids.length === 0) {
         deleteMore = false;
       } else {
@@ -81,7 +81,7 @@ export function CarrierRateImport({ studyId, rateCount, onImported }: Props) {
   const handleDelete = async () => {
     let more = true;
     while (more) {
-      const { data: ids } = await supabase.from("carrier_rates").select("id").eq("study_id", studyId).limit(500);
+      const { data: ids } = await supabase.from("carrier_rates").select("id").eq("study_id", studyId).limit(50);
       if (!ids || ids.length === 0) { more = false; } else {
         await supabase.from("carrier_rates").delete().in("id", ids.map(r => r.id));
       }
