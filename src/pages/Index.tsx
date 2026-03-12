@@ -126,6 +126,7 @@ const Index = () => {
               <StudyCard
                 key={s.id}
                 study={s}
+                summary={summaries[s.id]}
                 onDuplicate={handleDuplicate}
                 onArchive={handleArchive}
                 onDelete={handleDelete}
