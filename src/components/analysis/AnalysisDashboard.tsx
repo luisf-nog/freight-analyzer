@@ -112,8 +112,11 @@ async function fetchAll(table: string, select: string, filters: Record<string, s
   const all: any[] = [];
   let offset = 0;
   const batchSize = 1000;
+  // Ensure 'id' is in the select for stable ordering (remove from results later if not requested)
+  const needsId = !select.includes("id");
+  const actualSelect = needsId ? `id, ${select}` : select;
   while (true) {
-    let q = (supabase.from(table as any) as any).select(select).range(offset, offset + batchSize - 1);
+    let q = (supabase.from(table as any) as any).select(actualSelect).order("id" as any).range(offset, offset + batchSize - 1);
     for (const [k, v] of Object.entries(filters)) q = q.eq(k, v);
     const { data, error } = await q;
     if (error) throw error;
@@ -121,6 +124,9 @@ async function fetchAll(table: string, select: string, filters: Record<string, s
     all.push(...data);
     if (data.length < batchSize) break;
     offset += batchSize;
+  }
+  if (needsId) {
+    return all.map(({ id, ...rest }) => rest);
   }
   return all;
 }
