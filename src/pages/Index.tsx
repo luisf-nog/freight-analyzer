@@ -14,23 +14,43 @@ interface StudyRow {
   notes: string | null;
 }
 
+export interface StudySummary {
+  study_id: string;
+  total_notas: number;
+  total_pago: number;
+  total_proposto: number;
+  economia: number;
+  pct_economia: number;
+}
+
 const Index = () => {
   const [studies, setStudies] = useState<StudyRow[]>([]);
+  const [summaries, setSummaries] = useState<Record<string, StudySummary>>({});
   const [loading, setLoading] = useState(true);
 
   const fetchStudies = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("studies")
-      .select("id, name, carrier_name, status, created_at, notes")
-      .neq("status", "archived")
-      .order("created_at", { ascending: false });
+    const [studiesRes, summariesRes] = await Promise.all([
+      supabase
+        .from("studies")
+        .select("id, name, carrier_name, status, created_at, notes")
+        .neq("status", "archived")
+        .order("created_at", { ascending: false }),
+      supabase.rpc("study_summaries"),
+    ]);
     setLoading(false);
-    if (error) {
-      toast({ title: "Erro ao carregar estudos", description: error.message, variant: "destructive" });
+    if (studiesRes.error) {
+      toast({ title: "Erro ao carregar estudos", description: studiesRes.error.message, variant: "destructive" });
       return;
     }
-    setStudies((data as StudyRow[]) ?? []);
+    setStudies((studiesRes.data as StudyRow[]) ?? []);
+    if (summariesRes.data) {
+      const map: Record<string, StudySummary> = {};
+      for (const s of summariesRes.data as StudySummary[]) {
+        map[s.study_id] = s;
+      }
+      setSummaries(map);
+    }
   }, []);
 
   useEffect(() => { fetchStudies(); }, [fetchStudies]);
@@ -106,6 +126,7 @@ const Index = () => {
               <StudyCard
                 key={s.id}
                 study={s}
+                summary={summaries[s.id]}
                 onDuplicate={handleDuplicate}
                 onArchive={handleArchive}
                 onDelete={handleDelete}

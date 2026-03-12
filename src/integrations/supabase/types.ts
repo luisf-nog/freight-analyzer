@@ -415,7 +415,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      study_summaries: {
+        Args: never
+        Returns: {
+          economia: number
+          pct_economia: number
+          study_id: string
+          total_notas: number
+          total_pago: number
+          total_proposto: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
