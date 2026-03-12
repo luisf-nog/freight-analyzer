@@ -113,7 +113,7 @@ async function fetchAll(table: string, select: string, filters: Record<string, s
   let offset = 0;
   const batchSize = 1000;
   while (true) {
-    let q = (supabase.from(table as any) as any).select(select).range(offset, offset + batchSize - 1);
+    let q = (supabase.from(table as any) as any).select(select).order("id" as any).range(offset, offset + batchSize - 1);
     for (const [k, v] of Object.entries(filters)) q = q.eq(k, v);
     const { data, error } = await q;
     if (error) throw error;
