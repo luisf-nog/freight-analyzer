@@ -47,8 +47,8 @@ export function StudyCard({ study, summary, onDuplicate, onArchive, onDelete }: 
   const statusInfo = STATUS_MAP[study.status] ?? STATUS_MAP.draft;
   const date = new Date(study.created_at).toLocaleDateString("pt-BR");
 
-  const hasSavings = summary && summary.economia < 0;
-  const hasLoss = summary && summary.economia > 0;
+  const hasSavings = summary && summary.economia > 0;
+  const hasLoss = summary && summary.economia < 0;
 
   return (
     <Card
