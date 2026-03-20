@@ -420,6 +420,8 @@ export type Database = {
         Returns: {
           economia: number
           pct_economia: number
+          prazo_medio_proposto: number
+          prazo_medio_realizado: number
           study_id: string
           total_notas: number
           total_pago: number
