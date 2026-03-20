@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MoreVertical, Archive, Copy, Trash2, TrendingDown, TrendingUp, FileText } from "lucide-react";
+import { MoreVertical, Archive, Copy, Trash2, TrendingDown, TrendingUp, FileText, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const STATUS_MAP: Record<string, { label: string; className: string }> = {
@@ -28,6 +28,8 @@ export interface StudySummary {
   total_proposto: number;
   economia: number;
   pct_economia: number;
+  prazo_medio_realizado: number | null;
+  prazo_medio_proposto: number | null;
 }
 
 interface Props {
@@ -110,6 +112,18 @@ export function StudyCard({ study, summary, onDuplicate, onArchive, onDelete }: 
               </span>
               <span>{formatCurrency(Math.abs(summary.economia))} ({Math.abs(summary.pct_economia)}%)</span>
             </div>
+            {(summary.prazo_medio_realizado != null || summary.prazo_medio_proposto != null) && (
+              <div className="flex items-center justify-between text-xs border-t pt-1.5 mt-1">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" /> Prazo
+                </span>
+                <span className="font-medium">
+                  {summary.prazo_medio_realizado != null ? `${summary.prazo_medio_realizado}d hoje` : "—"}
+                  {" → "}
+                  {summary.prazo_medio_proposto != null ? `${summary.prazo_medio_proposto}d proposta` : "—"}
+                </span>
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-xs text-muted-foreground italic">Sem simulação</p>

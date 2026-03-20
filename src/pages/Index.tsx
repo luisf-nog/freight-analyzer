@@ -21,6 +21,8 @@ export interface StudySummary {
   total_proposto: number;
   economia: number;
   pct_economia: number;
+  prazo_medio_realizado: number | null;
+  prazo_medio_proposto: number | null;
 }
 
 const Index = () => {
