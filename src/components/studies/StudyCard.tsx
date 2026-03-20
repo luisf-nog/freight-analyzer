@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MoreVertical, Archive, Copy, Trash2, TrendingDown, TrendingUp, FileText } from "lucide-react";
+import { MoreVertical, Archive, Copy, Trash2, TrendingDown, TrendingUp, FileText, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const STATUS_MAP: Record<string, { label: string; className: string }> = {
@@ -28,6 +28,8 @@ export interface StudySummary {
   total_proposto: number;
   economia: number;
   pct_economia: number;
+  prazo_medio_realizado: number | null;
+  prazo_medio_proposto: number | null;
 }
 
 interface Props {
