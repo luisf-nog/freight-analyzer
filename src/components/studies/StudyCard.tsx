@@ -112,6 +112,18 @@ export function StudyCard({ study, summary, onDuplicate, onArchive, onDelete }: 
               </span>
               <span>{formatCurrency(Math.abs(summary.economia))} ({Math.abs(summary.pct_economia)}%)</span>
             </div>
+            {(summary.prazo_medio_realizado != null || summary.prazo_medio_proposto != null) && (
+              <div className="flex items-center justify-between text-xs border-t pt-1.5 mt-1">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" /> Prazo
+                </span>
+                <span className="font-medium">
+                  {summary.prazo_medio_realizado != null ? `${summary.prazo_medio_realizado}d hoje` : "—"}
+                  {" → "}
+                  {summary.prazo_medio_proposto != null ? `${summary.prazo_medio_proposto}d proposta` : "—"}
+                </span>
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-xs text-muted-foreground italic">Sem simulação</p>
