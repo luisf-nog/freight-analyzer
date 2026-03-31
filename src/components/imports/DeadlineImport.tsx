@@ -61,7 +61,7 @@ export function DeadlineImport({ studyId, table, title, onImported }: Props) {
     let errorCount = 0;
     for (let i = 0; i < result.data.length; i += BATCH) {
       const batch = result.data.slice(i, i + BATCH).map(row => ({ ...row, study_id: studyId }));
-      const { error } = await supabase.from(table).insert(batch as any);
+      const { error } = await supabase.from(table).upsert(batch as any, { onConflict: "study_id,uf,cidade_corrigida" });
       if (error) errorCount++;
     }
 

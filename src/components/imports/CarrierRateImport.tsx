@@ -64,7 +64,7 @@ export function CarrierRateImport({ studyId, rateCount, onImported }: Props) {
     let errorCount = 0;
     for (let i = 0; i < result.data.length; i += BATCH) {
       const batch = result.data.slice(i, i + BATCH).map(row => ({ ...row, study_id: studyId }));
-      const { error } = await supabase.from("carrier_rates").insert(batch as any);
+      const { error } = await supabase.from("carrier_rates").upsert(batch as any, { onConflict: "study_id,uf,cidade_corrigida" });
       if (error) errorCount++;
     }
 
