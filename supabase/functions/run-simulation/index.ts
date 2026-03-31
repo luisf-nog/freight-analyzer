@@ -271,7 +271,7 @@ Deno.serve(async (req) => {
     }
 
     if (rows.length > 0) {
-      const { error } = await supabase.from("simulations").insert(rows);
+      const { error } = await supabase.from("simulations").upsert(rows, { onConflict: "study_id,shipment_row_id" });
       if (error) throw error;
     }
 
