@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "sdk_version": "0.22.2",
+  "path": "/functions/v1/mcp",
+  "auth": {
+    "type": "none"
+  },
+  "mcp": {
+    "server": {
+      "name": "frete-analise-mcp",
+      "version": "0.1.0",
+      "title": "Análise de Fretes MCP"
+    },
+    "tools": [
+      {
+        "name": "list_studies",
+        "title": "Listar estudos",
+        "description": "Lista os estudos de frete cadastrados (id, nome, transportadora, status, data de criação).",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "limit": {
+              "default": 50,
+              "description": "Máximo de estudos a retornar.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_study_summary",
+        "title": "Resumo do estudo",
+        "description": "Retorna o resumo de um estudo: total de notas, pago, proposto, economia (pago - proposto), % de economia e prazos médios (real vs proposto).",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "study_id": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUID do estudo."
+            }
+          },
+          "required": [
+            "study_id"
+          ]
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "analyze_by_uf",
+        "title": "Análise por UF",
+        "description": "Agrupa os resultados da simulação de um estudo por UF: total pago, total proposto, diferença (pago - proposto) e % de diferença. Positivo = economia proposta / negativo = proposta mais cara.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "study_id": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "required": [
+            "study_id"
+          ]
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "top_cities_to_adjust",
+        "title": "Cidades para ajustar",
+        "description": "Retorna as cidades onde a proposta da transportadora está mais cara que o valor pago hoje (candidatas a ajuste na negociação), ordenadas pela maior perda absoluta.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "study_id": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "limit": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "study_id"
+          ]
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
