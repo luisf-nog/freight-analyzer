@@ -47,6 +47,7 @@ export interface StudySummary {
 interface Props {
   study: StudyRow;
   summary?: StudySummary;
+  ufs?: string[];
   onDuplicate: (id: string) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
@@ -56,8 +57,18 @@ function formatCurrency(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-export function StudyCard({ study, summary, onDuplicate, onArchive, onDelete }: Props) {
+export function StudyCard({ study, summary, ufs, onDuplicate, onArchive, onDelete }: Props) {
   const navigate = useNavigate();
+  const regioes = (() => {
+    if (!ufs?.length) return [] as { nome: string; qtd: number }[];
+    const counts: Record<string, number> = {};
+    for (const uf of ufs) {
+      const macro = UF_MACRO[uf] ?? "Outro";
+      counts[macro] = (counts[macro] ?? 0) + 1;
+    }
+    return MACRO_ORDER.filter(m => counts[m]).map(m => ({ nome: m, qtd: counts[m] }));
+  })();
+
   const statusInfo = STATUS_MAP[study.status] ?? STATUS_MAP.draft;
   const date = new Date(study.created_at).toLocaleDateString("pt-BR");
 
