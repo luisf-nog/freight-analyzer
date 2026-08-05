@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MoreVertical, Archive, Copy, Trash2, TrendingDown, TrendingUp, FileText, Clock } from "lucide-react";
+import { MoreVertical, Archive, Copy, Trash2, TrendingDown, TrendingUp, FileText, Clock, MapPin } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const STATUS_MAP: Record<string, { label: string; className: string }> = {
@@ -11,6 +11,18 @@ const STATUS_MAP: Record<string, { label: string; className: string }> = {
   calculated: { label: "Calculado", className: "bg-success/15 text-success" },
   archived: { label: "Arquivado", className: "bg-muted text-muted-foreground opacity-60" },
 };
+
+const UF_MACRO: Record<string, string> = {
+  AC: "Norte", AM: "Norte", AP: "Norte", PA: "Norte", RO: "Norte", RR: "Norte", TO: "Norte",
+  AL: "Nordeste", BA: "Nordeste", CE: "Nordeste", MA: "Nordeste", PB: "Nordeste",
+  PE: "Nordeste", PI: "Nordeste", RN: "Nordeste", SE: "Nordeste",
+  DF: "Centro-Oeste", GO: "Centro-Oeste", MS: "Centro-Oeste", MT: "Centro-Oeste",
+  ES: "Sudeste", MG: "Sudeste", RJ: "Sudeste", SP: "Sudeste",
+  PR: "Sul", RS: "Sul", SC: "Sul",
+};
+
+const MACRO_ORDER = ["Sul", "Sudeste", "Centro-Oeste", "Nordeste", "Norte", "Outro"];
+
 
 interface StudyRow {
   id: string;
