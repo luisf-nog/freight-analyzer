@@ -1,9 +1,23 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { StudyCard } from "@/components/studies/StudyCard";
 import { CreateStudyDialog } from "@/components/studies/CreateStudyDialog";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
-import { Package } from "lucide-react";
+import { Package, Filter } from "lucide-react";
+
+const UF_MACRO: Record<string, string> = {
+  AC: "Norte", AM: "Norte", AP: "Norte", PA: "Norte", RO: "Norte", RR: "Norte", TO: "Norte",
+  AL: "Nordeste", BA: "Nordeste", CE: "Nordeste", MA: "Nordeste", PB: "Nordeste",
+  PE: "Nordeste", PI: "Nordeste", RN: "Nordeste", SE: "Nordeste",
+  DF: "Centro-Oeste", GO: "Centro-Oeste", MS: "Centro-Oeste", MT: "Centro-Oeste",
+  ES: "Sudeste", MG: "Sudeste", RJ: "Sudeste", SP: "Sudeste",
+  PR: "Sul", RS: "Sul", SC: "Sul",
+};
+
+const MACRO_ORDER = ["Sul", "Sudeste", "Centro-Oeste", "Nordeste", "Norte", "Outro"];
+
 
 interface StudyRow {
   id: string;
@@ -30,6 +44,37 @@ const Index = () => {
   const [summaries, setSummaries] = useState<Record<string, StudySummary>>({});
   const [ufsMap, setUfsMap] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
+  const [regiaoFilter, setRegiaoFilter] = useState("all");
+  const [ufFilter, setUfFilter] = useState("all");
+
+  const availableRegioes = useMemo(() => {
+    const set = new Set<string>();
+    for (const ufs of Object.values(ufsMap)) {
+      for (const uf of ufs) set.add(UF_MACRO[uf] ?? "Outro");
+    }
+    return MACRO_ORDER.filter(m => set.has(m));
+  }, [ufsMap]);
+
+  const availableUfs = useMemo(() => {
+    const set = new Set<string>();
+    for (const ufs of Object.values(ufsMap)) {
+      for (const uf of ufs) {
+        if (regiaoFilter === "all" || (UF_MACRO[uf] ?? "Outro") === regiaoFilter) set.add(uf);
+      }
+    }
+    return [...set].sort();
+  }, [ufsMap, regiaoFilter]);
+
+  const filteredStudies = useMemo(() => {
+    if (regiaoFilter === "all" && ufFilter === "all") return studies;
+    return studies.filter(s => {
+      const ufs = ufsMap[s.id] ?? [];
+      if (ufFilter !== "all") return ufs.includes(ufFilter);
+      return ufs.some(uf => (UF_MACRO[uf] ?? "Outro") === regiaoFilter);
+    });
+  }, [studies, ufsMap, regiaoFilter, ufFilter]);
+
+
 
   const fetchStudies = useCallback(async () => {
     setLoading(true);
@@ -121,6 +166,43 @@ const Index = () => {
       </header>
 
       <main className="container py-8">
+        {!loading && studies.length > 0 && (
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Filter className="h-4 w-4" /> Filtros
+            </div>
+            <Select value={regiaoFilter} onValueChange={v => { setRegiaoFilter(v); setUfFilter("all"); }}>
+              <SelectTrigger className="w-[190px]">
+                <SelectValue placeholder="Região" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as regiões</SelectItem>
+                {availableRegioes.map(r => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={ufFilter} onValueChange={setUfFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="UF" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as UFs</SelectItem>
+                {availableUfs.map(uf => (
+                  <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(regiaoFilter !== "all" || ufFilter !== "all") && (
+              <Button variant="ghost" size="sm" onClick={() => { setRegiaoFilter("all"); setUfFilter("all"); }}>
+                Limpar
+              </Button>
+            )}
+            <span className="text-sm text-muted-foreground">
+              {filteredStudies.length} de {studies.length} estudos
+            </span>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <p className="text-muted-foreground">Carregando estudos...</p>
@@ -132,9 +214,14 @@ const Index = () => {
             <p className="mb-6 text-muted-foreground">Crie um novo estudo para começar a analisar tabelas de frete.</p>
             <CreateStudyDialog onCreated={fetchStudies} />
           </div>
+        ) : filteredStudies.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <Package className="mb-4 h-12 w-12 text-muted-foreground/30" />
+            <p className="text-muted-foreground">Nenhum estudo atende aos filtros selecionados.</p>
+          </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {studies.map(s => (
+            {filteredStudies.map(s => (
               <StudyCard
                 key={s.id}
                 study={s}

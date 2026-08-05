@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { MoreVertical, Archive, Copy, Trash2, TrendingDown, TrendingUp, FileText, Clock, MapPin } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -60,14 +61,15 @@ function formatCurrency(v: number) {
 export function StudyCard({ study, summary, ufs, onDuplicate, onArchive, onDelete }: Props) {
   const navigate = useNavigate();
   const regioes = (() => {
-    if (!ufs?.length) return [] as { nome: string; qtd: number }[];
-    const counts: Record<string, number> = {};
-    for (const uf of ufs) {
+    if (!ufs?.length) return [] as { nome: string; estados: string[] }[];
+    const groups: Record<string, string[]> = {};
+    for (const uf of [...ufs].sort()) {
       const macro = UF_MACRO[uf] ?? "Outro";
-      counts[macro] = (counts[macro] ?? 0) + 1;
+      (groups[macro] ??= []).push(uf);
     }
-    return MACRO_ORDER.filter(m => counts[m]).map(m => ({ nome: m, qtd: counts[m] }));
+    return MACRO_ORDER.filter(m => groups[m]).map(m => ({ nome: m, estados: groups[m] }));
   })();
+
 
   const statusInfo = STATUS_MAP[study.status] ?? STATUS_MAP.draft;
   const date = new Date(study.created_at).toLocaleDateString("pt-BR");
@@ -113,14 +115,24 @@ export function StudyCard({ study, summary, ufs, onDuplicate, onArchive, onDelet
       </CardHeader>
       <CardContent className="space-y-2">
         {regioes.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 pb-1">
-            <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-            {regioes.map(r => (
-              <Badge key={r.nome} variant="outline" className="px-1.5 py-0 text-[11px] font-medium">
-                {r.nome} <span className="ml-1 text-muted-foreground">{r.qtd} UF</span>
-              </Badge>
-            ))}
-          </div>
+          <TooltipProvider delayDuration={100}>
+            <div className="flex flex-wrap items-center gap-1.5 pb-1" onClick={e => e.stopPropagation()}>
+              <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+              {regioes.map(r => (
+                <Tooltip key={r.nome}>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="cursor-help px-1.5 py-0 text-[11px] font-medium">
+                      {r.nome} <span className="ml-1 text-muted-foreground">{r.estados.length} UF</span>
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[220px]">
+                    <p className="text-xs font-semibold">{r.nome}</p>
+                    <p className="text-xs">{r.estados.join(", ")}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
+          </TooltipProvider>
         )}
         {summary ? (
           <div className="space-y-1.5">
