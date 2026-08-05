@@ -108,29 +108,6 @@ function getMacro(uf: string) {
   return UF_MACRO[uf] ?? "Outro";
 }
 
-async function fetchAll(table: string, select: string, filters: Record<string, string>) {
-  const all: any[] = [];
-  let offset = 0;
-  const batchSize = 1000;
-  // Ensure 'id' is in the select for stable ordering (remove from results later if not requested)
-  const needsId = !select.includes("id");
-  const actualSelect = needsId ? `id, ${select}` : select;
-  while (true) {
-    let q = (supabase.from(table as any) as any).select(actualSelect).order("id" as any).range(offset, offset + batchSize - 1);
-    for (const [k, v] of Object.entries(filters)) q = q.eq(k, v);
-    const { data, error } = await q;
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    all.push(...data);
-    if (data.length < batchSize) break;
-    offset += batchSize;
-  }
-  if (needsId) {
-    return all.map(({ id, ...rest }) => rest);
-  }
-  return all;
-}
-
 // === Component ===
 
 export function AnalysisDashboard({ studyId, simulationCount }: Props) {
@@ -154,32 +131,26 @@ export function AnalysisDashboard({ studyId, simulationCount }: Props) {
 
   useEffect(() => {
     if (simulationCount === 0) { setLoading(false); return; }
+    let cancelled = false;
     const load = async () => {
       setLoading(true);
-      const [sims, shipments, realized, proposed] = await Promise.all([
-        fetchAll("simulations",
-          "match_status, valor_cobrado, frete_final, diferenca_valor, pct_dif, reais_kg_hj, reais_kg_proposta, frete_base_peso, adv, sec_tas, pedagio, gris, sefaz, emex, tda, tso, tx_redespacho, frete_peso, adm_rodo_tax, frete_c_icms, trt_calc, errors, shipment_row_id",
-          { study_id: studyId }),
-        fetchAll("shipments_paid",
-          "id, uf, cidade_corrigida, peso, valor_nf, data",
-          { study_id: studyId }),
-        fetchAll("deadlines_realized", "uf, cidade_corrigida, prazo_dias", { study_id: studyId }),
-        fetchAll("deadlines_proposed", "uf, cidade_corrigida, prazo_dias", { study_id: studyId }),
-      ]);
-      const shipMap = new Map<string, { uf: string; cidade: string; peso: number; valor_nf: number; data: string | null }>();
-      for (const s of shipments) shipMap.set(s.id, { uf: s.uf, cidade: s.cidade_corrigida, peso: s.peso, valor_nf: s.valor_nf, data: s.data });
-      const merged: SimRow[] = sims.map((sim: any) => {
-        const ship = shipMap.get(sim.shipment_row_id);
-        return { ...sim, shipment_uf: ship?.uf ?? "", shipment_cidade: ship?.cidade ?? "", shipment_peso: ship?.peso ?? 0, shipment_valor_nf: ship?.valor_nf ?? 0, shipment_data: ship?.data ?? null };
-      });
-
-      setRows(merged);
-      setDeadlinesRealized(realized as any);
-      setDeadlinesProposed(proposed as any);
+      const { data, error } = await (supabase.rpc as any)("study_analysis_payload", { p_study_id: studyId });
+      if (cancelled) return;
+      if (error) {
+        console.error(error);
+        setLoading(false);
+        return;
+      }
+      const payload = (data ?? {}) as { rows?: SimRow[]; realized?: any[]; proposed?: any[] };
+      setRows((payload.rows ?? []) as SimRow[]);
+      setDeadlinesRealized((payload.realized ?? []) as any);
+      setDeadlinesProposed((payload.proposed ?? []) as any);
       setLoading(false);
     };
     load();
+    return () => { cancelled = true; };
   }, [studyId, simulationCount]);
+
 
   const filtered = useMemo(() => {
     return rows.filter(r => {
