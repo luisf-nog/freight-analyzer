@@ -121,6 +121,43 @@ const Index = () => {
       </header>
 
       <main className="container py-8">
+        {!loading && studies.length > 0 && (
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Filter className="h-4 w-4" /> Filtros
+            </div>
+            <Select value={regiaoFilter} onValueChange={v => { setRegiaoFilter(v); setUfFilter("all"); }}>
+              <SelectTrigger className="w-[190px]">
+                <SelectValue placeholder="Região" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as regiões</SelectItem>
+                {availableRegioes.map(r => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={ufFilter} onValueChange={setUfFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="UF" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as UFs</SelectItem>
+                {availableUfs.map(uf => (
+                  <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(regiaoFilter !== "all" || ufFilter !== "all") && (
+              <Button variant="ghost" size="sm" onClick={() => { setRegiaoFilter("all"); setUfFilter("all"); }}>
+                Limpar
+              </Button>
+            )}
+            <span className="text-sm text-muted-foreground">
+              {filteredStudies.length} de {studies.length} estudos
+            </span>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <p className="text-muted-foreground">Carregando estudos...</p>
@@ -132,9 +169,14 @@ const Index = () => {
             <p className="mb-6 text-muted-foreground">Crie um novo estudo para começar a analisar tabelas de frete.</p>
             <CreateStudyDialog onCreated={fetchStudies} />
           </div>
+        ) : filteredStudies.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <Package className="mb-4 h-12 w-12 text-muted-foreground/30" />
+            <p className="text-muted-foreground">Nenhum estudo atende aos filtros selecionados.</p>
+          </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {studies.map(s => (
+            {filteredStudies.map(s => (
               <StudyCard
                 key={s.id}
                 study={s}
