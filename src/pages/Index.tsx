@@ -44,6 +44,37 @@ const Index = () => {
   const [summaries, setSummaries] = useState<Record<string, StudySummary>>({});
   const [ufsMap, setUfsMap] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
+  const [regiaoFilter, setRegiaoFilter] = useState("all");
+  const [ufFilter, setUfFilter] = useState("all");
+
+  const availableRegioes = useMemo(() => {
+    const set = new Set<string>();
+    for (const ufs of Object.values(ufsMap)) {
+      for (const uf of ufs) set.add(UF_MACRO[uf] ?? "Outro");
+    }
+    return MACRO_ORDER.filter(m => set.has(m));
+  }, [ufsMap]);
+
+  const availableUfs = useMemo(() => {
+    const set = new Set<string>();
+    for (const ufs of Object.values(ufsMap)) {
+      for (const uf of ufs) {
+        if (regiaoFilter === "all" || (UF_MACRO[uf] ?? "Outro") === regiaoFilter) set.add(uf);
+      }
+    }
+    return [...set].sort();
+  }, [ufsMap, regiaoFilter]);
+
+  const filteredStudies = useMemo(() => {
+    if (regiaoFilter === "all" && ufFilter === "all") return studies;
+    return studies.filter(s => {
+      const ufs = ufsMap[s.id] ?? [];
+      if (ufFilter !== "all") return ufs.includes(ufFilter);
+      return ufs.some(uf => (UF_MACRO[uf] ?? "Outro") === regiaoFilter);
+    });
+  }, [studies, ufsMap, regiaoFilter, ufFilter]);
+
+
 
   const fetchStudies = useCallback(async () => {
     setLoading(true);
