@@ -415,6 +415,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      study_analysis_payload: { Args: { p_study_id: string }; Returns: Json }
       study_summaries: {
         Args: never
         Returns: {
