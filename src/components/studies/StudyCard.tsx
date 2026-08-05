@@ -114,14 +114,24 @@ export function StudyCard({ study, summary, ufs, onDuplicate, onArchive, onDelet
       </CardHeader>
       <CardContent className="space-y-2">
         {regioes.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 pb-1">
-            <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-            {regioes.map(r => (
-              <Badge key={r.nome} variant="outline" className="px-1.5 py-0 text-[11px] font-medium">
-                {r.nome} <span className="ml-1 text-muted-foreground">{r.qtd} UF</span>
-              </Badge>
-            ))}
-          </div>
+          <TooltipProvider delayDuration={100}>
+            <div className="flex flex-wrap items-center gap-1.5 pb-1" onClick={e => e.stopPropagation()}>
+              <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+              {regioes.map(r => (
+                <Tooltip key={r.nome}>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="cursor-help px-1.5 py-0 text-[11px] font-medium">
+                      {r.nome} <span className="ml-1 text-muted-foreground">{r.estados.length} UF</span>
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[220px]">
+                    <p className="text-xs font-semibold">{r.nome}</p>
+                    <p className="text-xs">{r.estados.join(", ")}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
+          </TooltipProvider>
         )}
         {summary ? (
           <div className="space-y-1.5">
