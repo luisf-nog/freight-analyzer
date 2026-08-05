@@ -429,6 +429,13 @@ export type Database = {
           total_proposto: number
         }[]
       }
+      study_ufs: {
+        Args: never
+        Returns: {
+          study_id: string
+          ufs: string[]
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

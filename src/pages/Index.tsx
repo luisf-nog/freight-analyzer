@@ -28,17 +28,19 @@ export interface StudySummary {
 const Index = () => {
   const [studies, setStudies] = useState<StudyRow[]>([]);
   const [summaries, setSummaries] = useState<Record<string, StudySummary>>({});
+  const [ufsMap, setUfsMap] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
 
   const fetchStudies = useCallback(async () => {
     setLoading(true);
-    const [studiesRes, summariesRes] = await Promise.all([
+    const [studiesRes, summariesRes, ufsRes] = await Promise.all([
       supabase
         .from("studies")
         .select("id, name, carrier_name, status, created_at, notes")
         .neq("status", "archived")
         .order("created_at", { ascending: false }),
       supabase.rpc("study_summaries"),
+      supabase.rpc("study_ufs"),
     ]);
     setLoading(false);
     if (studiesRes.error) {
@@ -53,7 +55,15 @@ const Index = () => {
       }
       setSummaries(map);
     }
+    if (ufsRes.data) {
+      const map: Record<string, string[]> = {};
+      for (const r of ufsRes.data as { study_id: string; ufs: string[] }[]) {
+        map[r.study_id] = r.ufs ?? [];
+      }
+      setUfsMap(map);
+    }
   }, []);
+
 
   useEffect(() => { fetchStudies(); }, [fetchStudies]);
 
@@ -129,6 +139,7 @@ const Index = () => {
                 key={s.id}
                 study={s}
                 summary={summaries[s.id]}
+                ufs={ufsMap[s.id]}
                 onDuplicate={handleDuplicate}
                 onArchive={handleArchive}
                 onDelete={handleDelete}
