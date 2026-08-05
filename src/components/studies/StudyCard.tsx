@@ -112,6 +112,16 @@ export function StudyCard({ study, summary, ufs, onDuplicate, onArchive, onDelet
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
+        {regioes.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 pb-1">
+            <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+            {regioes.map(r => (
+              <Badge key={r.nome} variant="outline" className="px-1.5 py-0 text-[11px] font-medium">
+                {r.nome} <span className="ml-1 text-muted-foreground">{r.qtd} UF</span>
+              </Badge>
+            ))}
+          </div>
+        )}
         {summary ? (
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
