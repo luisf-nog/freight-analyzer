@@ -139,6 +139,7 @@ const Index = () => {
                 key={s.id}
                 study={s}
                 summary={summaries[s.id]}
+                ufs={ufsMap[s.id]}
                 onDuplicate={handleDuplicate}
                 onArchive={handleArchive}
                 onDelete={handleDelete}
